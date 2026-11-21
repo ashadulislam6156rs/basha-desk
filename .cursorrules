@@ -1,0 +1,82 @@
+# .cursorrules — Basha Desk (বাসা ডেস্ক) · Property & Rental Management SaaS (Bangladesh)
+
+You are the coding agent for Basha Desk, a multi-tenant B2B Property & Rental Management SaaS.
+Brand: name "Basha Desk"; Brand Teal #114F4D, Brand Amber #E6A34B (tokens only, never hardcode); fonts Baloo Da 2 / Hind Siliguri / Inter (docs/03_UI_Spec.md section 0). npm scope @bashadesk/*.
+Reference docs (never override the 6 core): docs/SRS.md, docs/SRA.md.
+Code, identifiers, commits and PRs: English. UI strings: Bangla/English via i18n keys.
+
+## MANDATORY FIRST STEP
+Before ANY task (code, test, migration, refactor, bugfix) read fully:
+1. docs/01_PRD.md      (scope, requirement IDs, Non-Goals)
+2. docs/02_AppFlow.md  (screens, routes, state machines, error/empty states)
+3. docs/03_UI_Spec.md  (design tokens, components, i18n/format)
+4. docs/04_TRD.md      (locked stack, structure, security, standards)
+5. docs/05_Schema.md   (tables, constraints, RLS, auth/money flows)
+6. docs/06_Plan.md     (ordered checklist + progress log)
+If any file is missing, STOP and tell the human. Never guess.
+
+## WORKFLOW
+1. Take the FIRST unchecked task in docs/06_Plan.md whose dependencies are done. Do not skip ahead or invent tasks (propose them instead).
+2. Restate task, Req IDs and "Done when" in 2-3 lines.
+3. For money, auth, RLS or migrations: show the plan and wait for approval before coding.
+4. Implement in small steps; write tests together with code.
+5. Run: pnpm lint && pnpm typecheck && pnpm test (plus test:tenant-isolation / test:invariants when relevant). Never skip or disable tests to pass.
+6. Verify "Done when" with evidence.
+7. AFTER EVERY COMPLETED STEP update docs/06_Plan.md:
+   - mark [x] only if "Done when" is truly met
+   - append a Progress Log row: date | task ID | what was done | decisions/deviations/blockers
+   - add newly discovered work as a new task; log blockers in the open-questions table
+8. Commit with Conventional Commits + requirement ID, e.g. feat(payments): record payment (FR-042).
+
+## CONFLICTS
+- Precedence: 05_Schema > 04_TRD > 01_PRD > 02_AppFlow > 03_UI_Spec > 06_Plan.
+- If docs conflict or are ambiguous: ASK. Do not silently choose.
+- To deviate from a doc: update the doc first (with human approval), then the code.
+- Anything in PRD "Out of Scope" is FORBIDDEN without written human approval. [V2]/[Future] stay behind feature flags.
+
+## NON-NEGOTIABLE INVARIANTS
+Naming: Tenant = our SaaS client. Renter = occupant. Never call a renter "tenant".
+
+Tenant isolation:
+- Every tenant table: tenant_id NOT NULL, composite FK (tenant_id,id), ENABLE+FORCE RLS, tenant_isolation policy.
+- tenant_id comes from session/host resolution, NEVER from request input.
+- Run all DB work inside UnitOfWork.run(ctx, fn) (set_config transaction-local).
+- Host tenant must equal session tenant, else 401 + revoke session.
+- Every new table/endpoint ships with a cross-tenant test.
+
+Money:
+- NUMERIC(14,2) + currency; decimal lib in code; NEVER JS number for money; JSON money = string.
+- Non-DRAFT invoices, payments, ledger entries, deposit transactions, audit logs are IMMUTABLE. Fix via void/reversal + new record.
+- Payments require Idempotency-Key. Payment and Invoice are linked only via payment_allocations.
+- SaaS subscription (platform_*) and rental collection (invoices/payments) are separate domains: no shared tables/joins.
+- Never hold or settle renters' rent via the platform account.
+
+Security:
+- Zod-validate all input server-side; parameterized SQL only.
+- Cookie __Host-sid, HttpOnly, Secure, SameSite=Lax, host-only.
+- No secrets in code/logs; mask PII; NID encrypted at rest.
+- Plan limits enforced in backend (EntitlementService), not only UI.
+- AI is read-only and permission-checked; AI NEVER mutates financial data.
+
+Idempotency: jobs and payment/invoice-generation endpoints must give the same result when run twice.
+
+## STACK (LOCKED, see docs/04_TRD.md)
+TypeScript strict, pnpm + Turborepo, Next.js App Router + React + Tailwind + shadcn/ui, NestJS (Fastify) modular monolith, Drizzle + PostgreSQL 17+ (RLS), Redis + BullMQ, Zod, Vitest + Testcontainers + Playwright.
+Do NOT add any dependency/technology not in TRD. Propose it, wait for approval, then record in TRD + ADR. Pin exact versions; verify with `npm view`.
+
+## CODE & UI CONVENTIONS
+- Folder layout and naming exactly per TRD section 3; apps/* import only packages/*.
+- Thin controllers, logic in services, SQL in repositories; modules talk via public services only.
+- Errors: DomainError(code) -> RFC 9457 problem+json. No bare `throw new Error`. No `any`.
+- UI: design tokens only (no raw hex/px). All strings via next-intl keys (messages/bn.json, en.json). Format with Intl (bn-BD), Asia/Dhaka. Implement loading/empty/error states for every screen. Mobile-first (360px). Status = color + icon/label.
+
+## TESTING
+- New table -> cross-tenant test. Money logic -> invariants test (paid = sum allocations; payment = sum allocations; ledger balanced; paid <= total). API -> integration test on real Postgres (Testcontainers). Core flow -> Playwright.
+- Coverage >= 90% for billing, payments, ledger, access. No DB mocks in integration tests.
+
+## ASK BEFORE
+Destructive migrations; changing RLS/auth; touching payments/ledger/invoices; adding dependencies; changing CI; infra/secrets.
+Never run against production. Never commit .env* (except .env.example). Never rewrite shared git history. Never weaken RLS, security headers or rate limits.
+
+## DEFINITION OF DONE
+Matches "Done when" + Req IDs; tests pass (incl. isolation/invariants); lint/typecheck/build green; no Non-Goal violated; no undocumented dependency; docs updated if behavior/schema changed; docs/06_Plan.md checkbox + Progress Log updated.

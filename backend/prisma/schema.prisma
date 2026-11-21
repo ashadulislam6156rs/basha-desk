@@ -1,0 +1,1855 @@
+// =====================================================================================
+// Basha Desk — Prisma schema  (PostgreSQL 17+)
+// উৎস: docs/05_Schema.md  ·  এই ফাইলে যা প্রকাশ করা যায় না (RLS policy, EXCLUDE, CHECK,
+// trigger, partial index, generated column, self-FK) সব prisma/sql/rls_and_constraints.sql এ।
+// দুটো ফাইল **একসাথে** migration এ যাবে। docs এর সাথে বিরোধ হলে 05_Schema.md জেতে।
+// নামকরণ: Tenant = SaaS ক্লায়েন্ট; Renter = ভাড়াটিয়া।
+//
+// RBAC রিভিশন (এই ভার্সনে যা বদলেছে):
+//  1. Platform RBAC: enum PlatformRole সরানো হয়েছে → PlatformRole / PlatformPermission /
+//     PlatformRolePermission মডেল। PlatformUser.roleId। PlatformRole.isSuperAdmin = true হলে
+//     সব permission check bypass (অ্যাপ লেয়ারে)।
+//  2. Permission / PlatformPermission এ module + action (enum) + scopeType + sortOrder।
+//  3. Role.baseRoleId (system role ক্লোন করে কাস্টমাইজ)।
+//  4. Membership.scopeAll / Invite.scopeAll ("সব property" বনাম "নির্দিষ্ট property")।
+// =====================================================================================
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  extensions = [citext, pg_trgm, btree_gist, pgcrypto]
+}
+
+// ----------------------------------------------- ENUMS -----------------------------------------------
+
+enum TenantStatus {
+  PROVISIONING
+  PROVISION_FAILED
+  READY
+  SUSPENDED
+  CANCELLED
+  ARCHIVED
+  @@map("tenant_status")
+}
+
+enum DbMode {
+  SHARED
+  DEDICATED
+  @@map("db_mode")
+}
+
+enum DomainType {
+  SUBDOMAIN
+  CUSTOM
+  @@map("domain_type")
+}
+
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  FAILED
+  @@map("verification_status")
+}
+
+enum SslStatus {
+  PENDING
+  ACTIVE
+  ERROR
+  @@map("ssl_status")
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+  @@map("subscription_status")
+}
+
+enum PlatformInvoiceStatus {
+  DRAFT
+  ISSUED
+  PAID
+  VOID
+  @@map("platform_invoice_status")
+}
+
+// permission এর action (module-wise checkbox matrix এর কলাম)
+enum PermissionAction {
+  VIEW
+  CREATE
+  EDIT
+  DELETE
+  ARCHIVE
+  RESTORE
+  RESET
+  APPROVE
+  VOID
+  EXPORT
+  IMPORT
+  ASSIGN
+  @@map("permission_action")
+}
+
+// GLOBAL = পুরো tenant/platform এ প্রযোজ্য; PROPERTY = property scope দ্বারা সীমিত (শুধু tenant permission এ অর্থবহ)
+enum PermissionScopeType {
+  GLOBAL
+  PROPERTY
+  @@map("permission_scope_type")
+}
+
+enum UserKind {
+  STAFF
+  RENTER
+  @@map("user_kind")
+}
+
+enum OtpPurpose {
+  RENTER_LOGIN
+  SIGNUP
+  INVITE
+  @@map("otp_purpose")
+}
+
+enum SpaceType {
+  FLAT
+  SHOP
+  PARKING
+  ROOM
+  SEAT
+  OTHER
+  @@map("space_type")
+}
+
+enum SpaceStatus {
+  VACANT
+  OCCUPIED
+  RESERVED
+  MAINTENANCE
+  @@map("space_status")
+}
+
+enum AgreementStatus {
+  DRAFT
+  ACTIVE
+  ENDING
+  ENDED
+  CANCELLED
+  @@map("agreement_status")
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  VOID
+  @@map("invoice_status")
+}
+
+enum InvoiceSource {
+  AUTO
+  MANUAL
+  @@map("invoice_source")
+}
+
+enum PaymentMethod {
+  CASH
+  BKASH
+  NAGAD
+  ROCKET
+  BANK
+  CARD
+  OTHER
+  @@map("payment_method")
+}
+
+enum PaymentStatus {
+  RECORDED
+  VOID
+  @@map("payment_status")
+}
+
+enum AllocationKind {
+  INVOICE
+  CREDIT
+  @@map("allocation_kind")
+}
+
+enum ChargeFrequency {
+  MONTHLY
+  QUARTERLY
+  YEARLY
+  ONE_TIME
+  @@map("charge_frequency")
+}
+
+enum ChargeCategory {
+  RENT
+  SERVICE_CHARGE
+  ELECTRICITY
+  GAS
+  WATER
+  PARKING
+  LATE_FEE
+  OTHER
+  @@map("charge_category")
+}
+
+enum DepositTxnType {
+  RECEIVED
+  ADJUSTED
+  REFUNDED
+  FORFEITED
+  @@map("deposit_txn_type")
+}
+
+enum LateFeeType {
+  FIXED
+  PERCENT
+  PER_DAY
+  @@map("late_fee_type")
+}
+
+enum UtilityKind {
+  ELECTRICITY
+  GAS
+  WATER
+  @@map("utility_kind")
+}
+
+enum RenterDocKind {
+  NID_FRONT
+  NID_BACK
+  PHOTO
+  AGREEMENT_SCAN
+  OTHER
+  @@map("renter_doc_kind")
+}
+
+enum MaintenanceStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+  @@map("maintenance_status")
+}
+
+enum MaintenancePriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+  @@map("maintenance_priority")
+}
+
+enum NoticeAudience {
+  ALL
+  PROPERTY
+  SELECTED
+  @@map("notice_audience")
+}
+
+enum NotificationChannel {
+  IN_APP
+  SMS
+  EMAIL
+  @@map("notification_channel")
+}
+
+enum NotificationStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  FAILED
+  SKIPPED_QUOTA
+  @@map("notification_status")
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+  @@map("invite_status")
+}
+
+enum ImportKind {
+  PROPERTIES_SPACES
+  RENTERS
+  @@map("import_kind")
+}
+
+enum ImportStatus {
+  UPLOADED
+  VALIDATED
+  IMPORTING
+  DONE
+  FAILED
+  @@map("import_status")
+}
+
+enum LedgerAccountType {
+  ASSET
+  LIABILITY
+  INCOME
+  EXPENSE
+  EQUITY
+  @@map("ledger_account_type")
+}
+
+enum JournalSource {
+  INVOICE_ISSUED
+  PAYMENT
+  PAYMENT_VOID
+  INVOICE_VOID
+  DEPOSIT
+  EXPENSE
+  @@map("journal_source")
+}
+
+enum ExpenseStatus {
+  RECORDED
+  VOID
+  @@map("expense_status")
+}
+
+enum ActorKind {
+  USER
+  SYSTEM
+  SUPPORT
+  @@map("actor_kind")
+}
+
+enum AiRole {
+  USER
+  ASSISTANT
+  TOOL
+  @@map("ai_role")
+}
+
+// ----------------------------------------------- MODELS ----------------------------------------------
+
+model Plan {
+  id String @id @default(uuid(7)) @db.Uuid
+  code String @unique
+  nameBn String @map("name_bn")
+  nameEn String @map("name_en")
+  priceMonthly Decimal? @db.Decimal(14, 2) @map("price_monthly")
+  currency String @default("BDT") @db.Char(3)
+  isActive Boolean @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt DateTime @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  planEntitlementsByPlan PlanEntitlement[] @relation("PlanEntitlement_plan")
+  subscriptionsByPlan Subscription[] @relation("Subscription_plan")
+
+  @@map("plans")
+}
+
+model PlanEntitlement {
+  planId String @db.Uuid @map("plan_id")
+  key String
+  valueInt Int? @map("value_int")
+  valueBool Boolean? @map("value_bool")
+  isUnlimited Boolean @default(false) @map("is_unlimited")
+
+  plan Plan @relation("PlanEntitlement_plan", fields: [planId], references: [id], onDelete: Restrict)
+
+  @@id([planId, key])
+  @@map("plan_entitlements")
+}
+
+model Tenant {
+  id String @id @default(uuid(7)) @db.Uuid
+  slug String @unique @db.Citext
+  name String
+  status TenantStatus @default(PROVISIONING)
+  statusReason String? @map("status_reason")
+  dbMode DbMode @default(SHARED) @map("db_mode")
+  dbConnectionRef String? @map("db_connection_ref")
+  defaultLocale String @default("bn") @map("default_locale")
+  timezone String @default("Asia/Dhaka")
+  currency String @default("BDT") @db.Char(3)
+  ownerUserId String? @db.Uuid @map("owner_user_id")
+  branding Json @default("{}")
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt DateTime @updatedAt @db.Timestamptz(6) @map("updated_at")
+  suspendedAt DateTime? @db.Timestamptz(6) @map("suspended_at")
+  cancelledAt DateTime? @db.Timestamptz(6) @map("cancelled_at")
+  archivedAt DateTime? @db.Timestamptz(6) @map("archived_at")
+
+  tenantDomains TenantDomain[] @relation("TenantDomain_tenant")
+  subscriptions Subscription[] @relation("Subscription_tenant")
+  platformInvoices PlatformInvoice[] @relation("PlatformInvoice_tenant")
+  platformPayments PlatformPayment[] @relation("PlatformPayment_tenant")
+  supportAccessGrants SupportAccessGrant[] @relation("SupportAccessGrant_tenant")
+  tenantUsageCounters TenantUsageCounter[] @relation("TenantUsageCounter_tenant")
+  users User[] @relation("User_tenant")
+  sessions Session[] @relation("Session_tenant")
+  otpChallenges OtpChallenge[] @relation("OtpChallenge_tenant")
+  roles Role[] @relation("Role_tenant")
+  memberships Membership[] @relation("Membership_tenant")
+  membershipPropertyScopes MembershipPropertyScope[] @relation("MembershipPropertyScope_tenant")
+  invites Invite[] @relation("Invite_tenant")
+  portfolios Portfolio[] @relation("Portfolio_tenant")
+  propertys Property[] @relation("Property_tenant")
+  buildings Building[] @relation("Building_tenant")
+  floors Floor[] @relation("Floor_tenant")
+  spaces Space[] @relation("Space_tenant")
+  documents Document[] @relation("Document_tenant")
+  renters Renter[] @relation("Renter_tenant")
+  renterDocuments RenterDocument[] @relation("RenterDocument_tenant")
+  agreements Agreement[] @relation("Agreement_tenant")
+  agreementSpaces AgreementSpace[] @relation("AgreementSpace_tenant")
+  chargeTypes ChargeType[] @relation("ChargeType_tenant")
+  agreementCharges AgreementCharge[] @relation("AgreementCharge_tenant")
+  rentEscalations RentEscalation[] @relation("RentEscalation_tenant")
+  invoiceCounters InvoiceCounter[] @relation("InvoiceCounter_tenant")
+  invoices Invoice[] @relation("Invoice_tenant")
+  invoiceLines InvoiceLine[] @relation("InvoiceLine_tenant")
+  payments Payment[] @relation("Payment_tenant")
+  paymentAllocations PaymentAllocation[] @relation("PaymentAllocation_tenant")
+  deposits Deposit[] @relation("Deposit_tenant")
+  depositTransactions DepositTransaction[] @relation("DepositTransaction_tenant")
+  lateFeeRules LateFeeRule[] @relation("LateFeeRule_tenant")
+  utilityMeters UtilityMeter[] @relation("UtilityMeter_tenant")
+  meterReadings MeterReading[] @relation("MeterReading_tenant")
+  ledgerAccounts LedgerAccount[] @relation("LedgerAccount_tenant")
+  journals Journal[] @relation("Journal_tenant")
+  ledgerEntrys LedgerEntry[] @relation("LedgerEntry_tenant")
+  expenseCategorys ExpenseCategory[] @relation("ExpenseCategory_tenant")
+  vendors Vendor[] @relation("Vendor_tenant")
+  expenses Expense[] @relation("Expense_tenant")
+  ownershipShares OwnershipShare[] @relation("OwnershipShare_tenant")
+  maintenanceRequests MaintenanceRequest[] @relation("MaintenanceRequest_tenant")
+  maintenanceComments MaintenanceComment[] @relation("MaintenanceComment_tenant")
+  maintenanceAttachments MaintenanceAttachment[] @relation("MaintenanceAttachment_tenant")
+  notices Notice[] @relation("Notice_tenant")
+  noticeRecipients NoticeRecipient[] @relation("NoticeRecipient_tenant")
+  notificationOutboxs NotificationOutbox[] @relation("NotificationOutbox_tenant")
+  inAppNotifications InAppNotification[] @relation("InAppNotification_tenant")
+  smsUsages SmsUsage[] @relation("SmsUsage_tenant")
+  importJobs ImportJob[] @relation("ImportJob_tenant")
+  idempotencyKeys IdempotencyKey[] @relation("IdempotencyKey_tenant")
+  auditLogs AuditLog[] @relation("AuditLog_tenant")
+  tenantFeatureFlags TenantFeatureFlag[] @relation("TenantFeatureFlag_tenant")
+  aiConversations AiConversation[] @relation("AiConversation_tenant")
+  aiMessages AiMessage[] @relation("AiMessage_tenant")
+
+  @@map("tenants")
+}
+
+model TenantDomain {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  hostname String @unique @db.Citext
+  type DomainType
+  isPrimary Boolean @default(false) @map("is_primary")
+  verificationStatus VerificationStatus @default(PENDING) @map("verification_status")
+  verificationToken String? @map("verification_token")
+  sslStatus SslStatus @default(PENDING) @map("ssl_status")
+  cfCustomHostnameId String? @map("cf_custom_hostname_id")
+  isActive Boolean @default(true) @map("is_active")
+  releasedAt DateTime? @db.Timestamptz(6) @map("released_at")
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt DateTime @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  tenant Tenant @relation("TenantDomain_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@map("tenant_domains")
+}
+
+model ReservedSlug {
+  slug String @id @db.Citext
+  reason String?
+
+  @@map("reserved_slugs")
+}
+
+model SlugReservation {
+  slug String @id @db.Citext
+  releasedFromTenantId String @db.Uuid @map("released_from_tenant_id")
+  reservedUntil DateTime @db.Timestamptz(6) @map("reserved_until")
+
+  @@map("slug_reservations")
+}
+
+// ============================ PLATFORM RBAC (আমাদের নিজের ওয়েবসাইট/অ্যাডমিন প্যানেল) ============================
+
+// role এখন enum নয়, মডেল। isSuperAdmin = true → সব permission bypass (permission row লাগে না)।
+// SQL ফাইলে: partial unique (is_super_admin = true) শুধু system role এ; শেষ active super admin ডিলিট/ডিঅ্যাকটিভ আটকানোর trigger।
+model PlatformRole {
+  id String @id @default(uuid(7)) @db.Uuid
+  code String @unique
+  nameBn String @map("name_bn")
+  nameEn String @map("name_en")
+  description String?
+  isSuperAdmin Boolean @default(false) @map("is_super_admin")
+  isSystem Boolean @default(false) @map("is_system")
+  isActive Boolean @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt DateTime @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  platformUsersByRole PlatformUser[] @relation("PlatformUser_role")
+  platformRolePermissionsByRole PlatformRolePermission[] @relation("PlatformRolePermission_role")
+
+  @@map("platform_roles")
+}
+
+// code যেমন "tenant.create", "billing.view", "support_access.grant"
+model PlatformPermission {
+  code String @id
+  module String
+  action PermissionAction
+  descriptionBn String? @map("description_bn")
+  descriptionEn String? @map("description_en")
+  sortOrder Int @default(0) @map("sort_order")
+
+  platformRolePermissionsByPermission PlatformRolePermission[] @relation("PlatformRolePermission_permission")
+
+  @@unique([module, action])
+  @@index([module, sortOrder])
+  @@map("platform_permissions")
+}
+
+model PlatformRolePermission {
+  roleId String @db.Uuid @map("role_id")
+  permissionCode String @map("permission_code")
+
+  role PlatformRole @relation("PlatformRolePermission_role", fields: [roleId], references: [id], onDelete: Restrict)
+  permission PlatformPermission @relation("PlatformRolePermission_permission", fields: [permissionCode], references: [code], onDelete: Restrict)
+
+  @@id([roleId, permissionCode])
+  @@map("platform_role_permissions")
+}
+
+model PlatformUser {
+  id String @id @default(uuid(7)) @db.Uuid
+  email String @unique @db.Citext
+  name String
+  passwordHash String @map("password_hash")
+  roleId String @db.Uuid @map("role_id")
+  isActive Boolean @default(true) @map("is_active")
+  lastLoginAt DateTime? @db.Timestamptz(6) @map("last_login_at")
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt DateTime @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  role PlatformRole @relation("PlatformUser_role", fields: [roleId], references: [id], onDelete: Restrict)
+  platformPaymentsByRecordedBy PlatformPayment[] @relation("PlatformPayment_recordedBy")
+  platformSessionsByPlatformUser PlatformSession[] @relation("PlatformSession_platformUser")
+  platformMfa PlatformMfa? @relation("PlatformMfa_platformUser")
+  supportAccessGrantsByAgent SupportAccessGrant[] @relation("SupportAccessGrant_agent")
+  supportAccessGrantsByGrantedBy SupportAccessGrant[] @relation("SupportAccessGrant_grantedBy")
+  platformAuditLogsByPlatformUser PlatformAuditLog[] @relation("PlatformAuditLog_platformUser")
+
+  @@index([roleId])
+  @@map("platform_users")
+}
+
+model Subscription {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  planId String @db.Uuid @map("plan_id")
+  status SubscriptionStatus
+  trialEndsAt DateTime? @db.Timestamptz(6) @map("trial_ends_at")
+  currentPeriodStart DateTime? @db.Timestamptz(6) @map("current_period_start")
+  currentPeriodEnd DateTime? @db.Timestamptz(6) @map("current_period_end")
+  cancelAtPeriodEnd Boolean @default(false) @map("cancel_at_period_end")
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt DateTime @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  tenant Tenant @relation("Subscription_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  plan Plan @relation("Subscription_plan", fields: [planId], references: [id], onDelete: Restrict)
+  platformInvoicesBySubscription PlatformInvoice[] @relation("PlatformInvoice_subscription")
+
+  @@index([tenantId])
+  @@map("subscriptions")
+}
+
+model PlatformInvoice {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  subscriptionId String @db.Uuid @map("subscription_id")
+  number String @unique
+  periodStart DateTime @db.Date @map("period_start")
+  periodEnd DateTime @db.Date @map("period_end")
+  amount Decimal @db.Decimal(14, 2)
+  currency String @default("BDT") @db.Char(3)
+  status PlatformInvoiceStatus @default(DRAFT)
+  dueDate DateTime @db.Date @map("due_date")
+  issuedAt DateTime? @db.Timestamptz(6) @map("issued_at")
+  paidAt DateTime? @db.Timestamptz(6) @map("paid_at")
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt DateTime @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  tenant Tenant @relation("PlatformInvoice_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  subscription Subscription @relation("PlatformInvoice_subscription", fields: [subscriptionId], references: [id], onDelete: Restrict)
+  platformPaymentsByPlatformInvoice PlatformPayment[] @relation("PlatformPayment_platformInvoice")
+
+  @@map("platform_invoices")
+}
+
+model PlatformPayment {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  platformInvoiceId String @db.Uuid @map("platform_invoice_id")
+  amount Decimal @db.Decimal(14, 2)
+  method PaymentMethod
+  reference String?
+  paidAt DateTime @db.Timestamptz(6) @map("paid_at")
+  recordedByPlatformUserId String? @db.Uuid @map("recorded_by_platform_user_id")
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  tenant Tenant @relation("PlatformPayment_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  platformInvoice PlatformInvoice @relation("PlatformPayment_platformInvoice", fields: [platformInvoiceId], references: [id], onDelete: Restrict)
+  recordedBy PlatformUser? @relation("PlatformPayment_recordedBy", fields: [recordedByPlatformUserId], references: [id], onDelete: Restrict)
+
+  @@map("platform_payments")
+}
+
+model PlatformSession {
+  id String @id @default(uuid(7)) @db.Uuid
+  platformUserId String @db.Uuid @map("platform_user_id")
+  tokenHash String @unique @map("token_hash")
+  ip String?
+  userAgent String? @map("user_agent")
+  expiresAt DateTime @db.Timestamptz(6) @map("expires_at")
+  revokedAt DateTime? @db.Timestamptz(6) @map("revoked_at")
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  platformUser PlatformUser @relation("PlatformSession_platformUser", fields: [platformUserId], references: [id], onDelete: Restrict)
+
+  @@map("platform_sessions")
+}
+
+model PlatformMfa {
+  platformUserId String @id @db.Uuid @map("platform_user_id")
+  totpSecretEnc String @map("totp_secret_enc")
+  enabledAt DateTime? @db.Timestamptz(6) @map("enabled_at")
+  recoveryCodesHash String[] @map("recovery_codes_hash")
+
+  platformUser PlatformUser @relation("PlatformMfa_platformUser", fields: [platformUserId], references: [id], onDelete: Restrict)
+
+  @@map("platform_mfa")
+}
+
+// scope এর মান = PlatformPermission.code (অ্যাপ লেয়ারে validate; Prisma তে array-FK নেই)
+model SupportAccessGrant {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  platformUserId String @db.Uuid @map("platform_user_id")
+  grantedById String @db.Uuid @map("granted_by_id")
+  scope String[]
+  reason String
+  expiresAt DateTime @db.Timestamptz(6) @map("expires_at")
+  revokedAt DateTime? @db.Timestamptz(6) @map("revoked_at")
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  tenant Tenant @relation("SupportAccessGrant_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  agent PlatformUser @relation("SupportAccessGrant_agent", fields: [platformUserId], references: [id], onDelete: Restrict)
+  grantedBy PlatformUser @relation("SupportAccessGrant_grantedBy", fields: [grantedById], references: [id], onDelete: Restrict)
+
+  @@index([platformUserId, expiresAt])
+  @@map("support_access_grants")
+}
+
+// tenantId এখানে ইচ্ছা করে FK নয় (tenant আর্কাইভ হলেও audit থাকবে)
+model PlatformAuditLog {
+  id String @id @default(uuid(7)) @db.Uuid
+  platformUserId String? @db.Uuid @map("platform_user_id")
+  tenantId String? @db.Uuid @map("tenant_id")
+  action String
+  entityType String? @map("entity_type")
+  entityId String? @map("entity_id")
+  before Json?
+  after Json?
+  ip String?
+  requestId String? @map("request_id")
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  platformUser PlatformUser? @relation("PlatformAuditLog_platformUser", fields: [platformUserId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, createdAt])
+  @@map("platform_audit_logs")
+}
+
+model TenantUsageCounter {
+  tenantId String @db.Uuid @map("tenant_id")
+  key String
+  value Int @default(0)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  tenant Tenant @relation("TenantUsageCounter_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@id([tenantId, key])
+  @@map("tenant_usage_counters")
+}
+
+// ============================ TENANT USERS & RBAC (ক্লায়েন্টের নিজস্ব) ============================
+
+// CHECK (phone IS NOT NULL OR email IS NOT NULL) → sql/rls_and_constraints.sql
+model User {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  kind UserKind
+  name String
+  phone String?
+  email String? @db.Citext
+  passwordHash String? @map("password_hash")
+  locale String @default("bn")
+  theme String @default("system")
+  isActive Boolean @default(true) @map("is_active")
+  failedLoginCount Int @default(0) @map("failed_login_count")
+  lockedUntil DateTime? @db.Timestamptz(6) @map("locked_until")
+  lastLoginAt DateTime? @db.Timestamptz(6) @map("last_login_at")
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt DateTime @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  tenant Tenant @relation("User_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  sessionsByUser Session[] @relation("Session_user")
+  membershipsByUser Membership[] @relation("Membership_user")
+  invitesByInvitedBy Invite[] @relation("Invite_invitedBy")
+  documentsByUploadedBy Document[] @relation("Document_uploadedBy")
+  rentersByUser Renter[] @relation("Renter_user")
+  agreementsByCreatedBy Agreement[] @relation("Agreement_createdBy")
+  invoicesByVoidedBy Invoice[] @relation("Invoice_voidedBy")
+  paymentsByReceivedBy Payment[] @relation("Payment_receivedBy")
+  paymentsByRecordedBy Payment[] @relation("Payment_recordedBy")
+  paymentsByVoidedBy Payment[] @relation("Payment_voidedBy")
+  depositTransactionsByCreatedBy DepositTransaction[] @relation("DepositTransaction_createdBy")
+  meterReadingsByCreatedBy MeterReading[] @relation("MeterReading_createdBy")
+  journalsByCreatedBy Journal[] @relation("Journal_createdBy")
+  expensesByCreatedBy Expense[] @relation("Expense_createdBy")
+  ownershipSharesByCoOwner OwnershipShare[] @relation("OwnershipShare_coOwner")
+  maintenanceRequestsByCreatedByUser MaintenanceRequest[] @relation("MaintenanceRequest_createdByUser")
+  maintenanceRequestsByAssignedTo MaintenanceRequest[] @relation("MaintenanceRequest_assignedTo")
+  maintenanceCommentsByAuthor MaintenanceComment[] @relation("MaintenanceComment_author")
+  noticesByCreatedBy Notice[] @relation("Notice_createdBy")
+  notificationOutboxsByToUser NotificationOutbox[] @relation("NotificationOutbox_toUser")
+  inAppNotificationsByUser InAppNotification[] @relation("InAppNotification_user")
+  importJobsByCreatedBy ImportJob[] @relation("ImportJob_createdBy")
+  auditLogsByUser AuditLog[] @relation("AuditLog_user")
+  aiConversationsByUser AiConversation[] @relation("AiConversation_user")
+
+  @@unique([tenantId, phone])
+  @@unique([tenantId, email])
+  @@unique([tenantId, id])
+  @@map("users")
+}
+
+model Session {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  userId String @db.Uuid @map("user_id")
+  tokenHash String @unique @map("token_hash")
+  ip String?
+  userAgent String? @map("user_agent")
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  lastSeenAt DateTime @default(now()) @db.Timestamptz(6) @map("last_seen_at")
+  expiresAt DateTime @db.Timestamptz(6) @map("expires_at")
+  absoluteExpiresAt DateTime @db.Timestamptz(6) @map("absolute_expires_at")
+  revokedAt DateTime? @db.Timestamptz(6) @map("revoked_at")
+
+  tenant Tenant @relation("Session_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  user User @relation("Session_user", fields: [tenantId, userId], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@unique([tenantId, id])
+  @@map("sessions")
+}
+
+model OtpChallenge {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  phone String
+  purpose OtpPurpose
+  codeHash String @map("code_hash")
+  attempts Int @default(0)
+  expiresAt DateTime @db.Timestamptz(6) @map("expires_at")
+  consumedAt DateTime? @db.Timestamptz(6) @map("consumed_at")
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  tenant Tenant @relation("OtpChallenge_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@map("otp_challenges")
+}
+
+// tenant-side permission (global catalog; seed করা হয়)। code যেমন "invoice.create"।
+// platform permission আলাদা (PlatformPermission)।
+model Permission {
+  code String @id
+  module String
+  action PermissionAction
+  scopeType PermissionScopeType @default(GLOBAL) @map("scope_type")
+  descriptionBn String? @map("description_bn")
+  descriptionEn String? @map("description_en")
+  sortOrder Int @default(0) @map("sort_order")
+
+  rolePermissionsByPermission RolePermission[] @relation("RolePermission_permission")
+
+  @@unique([module, action])
+  @@index([module, sortOrder])
+  @@map("permissions")
+}
+
+// tenantId NULL = system role। RLS নীতি আলাদা (sql ফাইল)। system role code ইউনিকনেস partial index এ।
+// baseRoleId: system role (বা অন্য role) ক্লোন করে কাস্টমাইজ করলে মূল role এর রেফারেন্স (শুধু তথ্য; permission কপি হয়ে যায়)।
+// SQL ফাইলে CHECK: baseRoleId এর role system role হতে হবে (অ্যাপ/trigger)।
+model Role {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String? @db.Uuid @map("tenant_id")
+  code String
+  nameBn String @map("name_bn")
+  nameEn String @map("name_en")
+  description String?
+  isSystem Boolean @default(false) @map("is_system")
+  baseRoleId String? @db.Uuid @map("base_role_id")
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt DateTime @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  tenant Tenant? @relation("Role_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  baseRole Role? @relation("Role_base", fields: [baseRoleId], references: [id], onDelete: Restrict)
+  derivedRoles Role[] @relation("Role_base")
+  rolePermissionsByRole RolePermission[] @relation("RolePermission_role")
+  membershipsByRole Membership[] @relation("Membership_role")
+  invitesByRole Invite[] @relation("Invite_role")
+
+  @@unique([tenantId, code])
+  @@index([baseRoleId])
+  @@map("roles")
+}
+
+model RolePermission {
+  roleId String @db.Uuid @map("role_id")
+  permissionCode String @map("permission_code")
+
+  role Role @relation("RolePermission_role", fields: [roleId], references: [id], onDelete: Restrict)
+  permission Permission @relation("RolePermission_permission", fields: [permissionCode], references: [code], onDelete: Restrict)
+
+  @@id([roleId, permissionCode])
+  @@map("role_permissions")
+}
+
+// scopeAll = true → সব property (MembershipPropertyScope row লাগে না)
+// scopeAll = false → শুধু MembershipPropertyScope এ থাকা property; row না থাকলে কোনো property নয়
+// Owner/system admin membership এ অ্যাপ scopeAll = true সেট করবে (default false = নিরাপদ)
+model Membership {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  userId String @db.Uuid @map("user_id")
+  roleId String @db.Uuid @map("role_id")
+  scopeAll Boolean @default(false) @map("scope_all")
+  isActive Boolean @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  tenant Tenant @relation("Membership_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  user User @relation("Membership_user", fields: [tenantId, userId], references: [tenantId, id], onDelete: Restrict)
+  role Role @relation("Membership_role", fields: [roleId], references: [id], onDelete: Restrict)
+  membershipPropertyScopesByMembership MembershipPropertyScope[] @relation("MembershipPropertyScope_membership")
+
+  @@unique([tenantId, userId])
+  @@unique([tenantId, id])
+  @@map("memberships")
+}
+
+model MembershipPropertyScope {
+  tenantId String @db.Uuid @map("tenant_id")
+  membershipId String @db.Uuid @map("membership_id")
+  propertyId String @db.Uuid @map("property_id")
+
+  tenant Tenant @relation("MembershipPropertyScope_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  membership Membership @relation("MembershipPropertyScope_membership", fields: [tenantId, membershipId], references: [tenantId, id], onDelete: Restrict)
+  property Property @relation("MembershipPropertyScope_property", fields: [tenantId, propertyId], references: [tenantId, id], onDelete: Restrict)
+
+  @@id([membershipId, propertyId])
+  @@map("membership_property_scopes")
+}
+
+model Invite {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  invitedById String @db.Uuid @map("invited_by_id")
+  phone String?
+  email String? @db.Citext
+  roleId String @db.Uuid @map("role_id")
+  scopeAll Boolean @default(false) @map("scope_all")
+  propertyIds String[] @db.Uuid @map("property_ids")
+  tokenHash String @unique @map("token_hash")
+  status InviteStatus @default(PENDING)
+  expiresAt DateTime @db.Timestamptz(6) @map("expires_at")
+  acceptedAt DateTime? @db.Timestamptz(6) @map("accepted_at")
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  tenant Tenant @relation("Invite_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  invitedBy User @relation("Invite_invitedBy", fields: [tenantId, invitedById], references: [tenantId, id], onDelete: Restrict)
+  role Role @relation("Invite_role", fields: [roleId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@map("invites")
+}
+
+// ============================ PROPERTY STRUCTURE ============================
+
+model Portfolio {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  name String
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt DateTime @updatedAt @db.Timestamptz(6) @map("updated_at")
+  deletedAt DateTime? @db.Timestamptz(6) @map("deleted_at")
+
+  tenant Tenant @relation("Portfolio_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  propertysByPortfolio Property[] @relation("Property_portfolio")
+
+  @@unique([tenantId, id])
+  @@map("portfolios")
+}
+
+model Property {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  portfolioId String? @db.Uuid @map("portfolio_id")
+  name String
+  code String?
+  division String?
+  district String?
+  upazila String?
+  address String
+  latitude Decimal? @db.Decimal(9, 6)
+  longitude Decimal? @db.Decimal(9, 6)
+  notes String?
+  isArchived Boolean @default(false) @map("is_archived")
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt DateTime @updatedAt @db.Timestamptz(6) @map("updated_at")
+  deletedAt DateTime? @db.Timestamptz(6) @map("deleted_at")
+
+  tenant Tenant @relation("Property_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  portfolio Portfolio? @relation("Property_portfolio", fields: [tenantId, portfolioId], references: [tenantId, id], onDelete: Restrict)
+  membershipPropertyScopesByProperty MembershipPropertyScope[] @relation("MembershipPropertyScope_property")
+  buildingsByProperty Building[] @relation("Building_property")
+  spacesByProperty Space[] @relation("Space_property")
+  agreementsByProperty Agreement[] @relation("Agreement_property")
+  invoicesByProperty Invoice[] @relation("Invoice_property")
+  paymentsByProperty Payment[] @relation("Payment_property")
+  lateFeeRulesByProperty LateFeeRule[] @relation("LateFeeRule_property")
+  ledgerEntrysByProperty LedgerEntry[] @relation("LedgerEntry_property")
+  expensesByProperty Expense[] @relation("Expense_property")
+  ownershipSharesByProperty OwnershipShare[] @relation("OwnershipShare_property")
+  maintenanceRequestsByProperty MaintenanceRequest[] @relation("MaintenanceRequest_property")
+  noticesByProperty Notice[] @relation("Notice_property")
+
+  @@unique([tenantId, code])
+  @@index([tenantId, name])
+  @@index([tenantId, district])
+  @@unique([tenantId, id])
+  @@map("properties")
+}
+
+model Building {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  propertyId String @db.Uuid @map("property_id")
+  name String
+  floorsCount Int? @map("floors_count")
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt DateTime @updatedAt @db.Timestamptz(6) @map("updated_at")
+  deletedAt DateTime? @db.Timestamptz(6) @map("deleted_at")
+
+  tenant Tenant @relation("Building_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  property Property @relation("Building_property", fields: [tenantId, propertyId], references: [tenantId, id], onDelete: Restrict)
+  floorsByBuilding Floor[] @relation("Floor_building")
+  spacesByBuilding Space[] @relation("Space_building")
+
+  @@unique([tenantId, propertyId, name])
+  @@unique([tenantId, id])
+  @@map("buildings")
+}
+
+model Floor {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  buildingId String @db.Uuid @map("building_id")
+  level Int
+  label String?
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  tenant Tenant @relation("Floor_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  building Building @relation("Floor_building", fields: [tenantId, buildingId], references: [tenantId, id], onDelete: Restrict)
+  spacesByFloor Space[] @relation("Space_floor")
+
+  @@unique([tenantId, buildingId, level])
+  @@unique([tenantId, id])
+  @@map("floors")
+}
+
+model Space {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  propertyId String @db.Uuid @map("property_id")
+  buildingId String? @db.Uuid @map("building_id")
+  floorId String? @db.Uuid @map("floor_id")
+  code String
+  type SpaceType
+  status SpaceStatus @default(VACANT)
+  areaSqft Decimal? @db.Decimal(10, 2) @map("area_sqft")
+  defaultRent Decimal @default(0) @db.Decimal(14, 2) @map("default_rent")
+  defaultServiceCharge Decimal @default(0) @db.Decimal(14, 2) @map("default_service_charge")
+  attributes Json @default("{}")
+  isArchived Boolean @default(false) @map("is_archived")
+  version Int @default(1)
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt DateTime @updatedAt @db.Timestamptz(6) @map("updated_at")
+  deletedAt DateTime? @db.Timestamptz(6) @map("deleted_at")
+
+  tenant Tenant @relation("Space_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  property Property @relation("Space_property", fields: [tenantId, propertyId], references: [tenantId, id], onDelete: Restrict)
+  building Building? @relation("Space_building", fields: [tenantId, buildingId], references: [tenantId, id], onDelete: Restrict)
+  floor Floor? @relation("Space_floor", fields: [tenantId, floorId], references: [tenantId, id], onDelete: Restrict)
+  agreementSpacesBySpace AgreementSpace[] @relation("AgreementSpace_space")
+  utilityMetersBySpace UtilityMeter[] @relation("UtilityMeter_space")
+  maintenanceRequestsBySpace MaintenanceRequest[] @relation("MaintenanceRequest_space")
+
+  @@unique([tenantId, propertyId, code])
+  @@index([tenantId, propertyId, status])
+  @@index([tenantId, type])
+  @@unique([tenantId, id])
+  @@map("spaces")
+}
+
+model Document {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  storageKey String @map("storage_key")
+  originalName String @map("original_name")
+  mimeType String @map("mime_type")
+  sizeBytes BigInt @map("size_bytes")
+  checksumSha256 String @map("checksum_sha256")
+  uploadedById String @db.Uuid @map("uploaded_by_id")
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  deletedAt DateTime? @db.Timestamptz(6) @map("deleted_at")
+
+  tenant Tenant @relation("Document_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  uploadedBy User @relation("Document_uploadedBy", fields: [tenantId, uploadedById], references: [tenantId, id], onDelete: Restrict)
+  rentersByPhotoDocument Renter[] @relation("Renter_photoDocument")
+  renterDocumentsByDocument RenterDocument[] @relation("RenterDocument_document")
+  agreementsByTermsDocument Agreement[] @relation("Agreement_termsDocument")
+  expensesByReceiptDocument Expense[] @relation("Expense_receiptDocument")
+  maintenanceAttachmentsByDocument MaintenanceAttachment[] @relation("MaintenanceAttachment_document")
+  importJobsByFileDocument ImportJob[] @relation("ImportJob_fileDocument")
+  importJobsByErrorReportDocument ImportJob[] @relation("ImportJob_errorReportDocument")
+
+  @@unique([tenantId, id])
+  @@map("documents")
+}
+
+// CHECK creditBalance >= 0; fullName এ pg_trgm GIN index → sql ফাইল
+model Renter {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  userId String? @db.Uuid @map("user_id")
+  fullName String @map("full_name")
+  phone String
+  email String? @db.Citext
+  nidEnc Bytes? @map("nid_enc")
+  nidLast4 String? @map("nid_last4")
+  addressPermanent String? @map("address_permanent")
+  occupation String?
+  emergencyName String? @map("emergency_name")
+  emergencyPhone String? @map("emergency_phone")
+  photoDocumentId String? @db.Uuid @map("photo_document_id")
+  notes String?
+  creditBalance Decimal @default(0) @db.Decimal(14, 2) @map("credit_balance")
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt DateTime @updatedAt @db.Timestamptz(6) @map("updated_at")
+  deletedAt DateTime? @db.Timestamptz(6) @map("deleted_at")
+
+  tenant Tenant @relation("Renter_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  user User? @relation("Renter_user", fields: [tenantId, userId], references: [tenantId, id], onDelete: Restrict)
+  photoDocument Document? @relation("Renter_photoDocument", fields: [tenantId, photoDocumentId], references: [tenantId, id], onDelete: Restrict)
+  renterDocumentsByRenter RenterDocument[] @relation("RenterDocument_renter")
+  agreementsByRenter Agreement[] @relation("Agreement_renter")
+  invoicesByRenter Invoice[] @relation("Invoice_renter")
+  paymentsByRenter Payment[] @relation("Payment_renter")
+  depositsByRenter Deposit[] @relation("Deposit_renter")
+  maintenanceRequestsByRenter MaintenanceRequest[] @relation("MaintenanceRequest_renter")
+  noticeRecipientsByRenter NoticeRecipient[] @relation("NoticeRecipient_renter")
+
+  @@unique([tenantId, phone])
+  @@index([tenantId, fullName])
+  @@unique([tenantId, id])
+  @@map("renters")
+}
+
+model RenterDocument {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  renterId String @db.Uuid @map("renter_id")
+  documentId String @db.Uuid @map("document_id")
+  kind RenterDocKind
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  tenant Tenant @relation("RenterDocument_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  renter Renter @relation("RenterDocument_renter", fields: [tenantId, renterId], references: [tenantId, id], onDelete: Restrict)
+  document Document @relation("RenterDocument_document", fields: [tenantId, documentId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@map("renter_documents")
+}
+
+// CHECK billingDay BETWEEN 1 AND 28
+model Agreement {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  propertyId String @db.Uuid @map("property_id")
+  renterId String @db.Uuid @map("renter_id")
+  number String
+  status AgreementStatus @default(DRAFT)
+  startDate DateTime @db.Date @map("start_date")
+  endDate DateTime? @db.Date @map("end_date")
+  billingDay Int @db.SmallInt @map("billing_day")
+  dueDays Int @default(7) @db.SmallInt @map("due_days")
+  securityDeposit Decimal @default(0) @db.Decimal(14, 2) @map("security_deposit")
+  notes String?
+  termsDocumentId String? @db.Uuid @map("terms_document_id")
+  activatedAt DateTime? @db.Timestamptz(6) @map("activated_at")
+  endedAt DateTime? @db.Timestamptz(6) @map("ended_at")
+  cancelledAt DateTime? @db.Timestamptz(6) @map("cancelled_at")
+  cancelReason String? @map("cancel_reason")
+  version Int @default(1)
+  createdById String @db.Uuid @map("created_by_id")
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt DateTime @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  tenant Tenant @relation("Agreement_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  property Property @relation("Agreement_property", fields: [tenantId, propertyId], references: [tenantId, id], onDelete: Restrict)
+  renter Renter @relation("Agreement_renter", fields: [tenantId, renterId], references: [tenantId, id], onDelete: Restrict)
+  termsDocument Document? @relation("Agreement_termsDocument", fields: [tenantId, termsDocumentId], references: [tenantId, id], onDelete: Restrict)
+  createdBy User @relation("Agreement_createdBy", fields: [tenantId, createdById], references: [tenantId, id], onDelete: Restrict)
+  agreementSpacesByAgreement AgreementSpace[] @relation("AgreementSpace_agreement")
+  agreementChargesByAgreement AgreementCharge[] @relation("AgreementCharge_agreement")
+  rentEscalationsByAgreement RentEscalation[] @relation("RentEscalation_agreement")
+  invoicesByAgreement Invoice[] @relation("Invoice_agreement")
+  deposit Deposit? @relation("Deposit_agreement")
+
+  @@unique([tenantId, number])
+  @@index([tenantId, renterId])
+  @@index([tenantId, propertyId, status])
+  @@index([tenantId, status, billingDay])
+  @@unique([tenantId, id])
+  @@map("agreements")
+}
+
+// ওভারল্যাপ EXCLUDE constraint → sql ফাইল
+model AgreementSpace {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  agreementId String @db.Uuid @map("agreement_id")
+  spaceId String @db.Uuid @map("space_id")
+  rentAmount Decimal @db.Decimal(14, 2) @map("rent_amount")
+  fromDate DateTime @db.Date @map("from_date")
+  toDate DateTime? @db.Date @map("to_date")
+  isActive Boolean @default(false) @map("is_active")
+
+  tenant Tenant @relation("AgreementSpace_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  agreement Agreement @relation("AgreementSpace_agreement", fields: [tenantId, agreementId], references: [tenantId, id], onDelete: Restrict)
+  space Space @relation("AgreementSpace_space", fields: [tenantId, spaceId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@map("agreement_spaces")
+}
+
+model ChargeType {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  code String
+  nameBn String @map("name_bn")
+  nameEn String @map("name_en")
+  category ChargeCategory
+  isTaxable Boolean @default(false) @map("is_taxable")
+  isActive Boolean @default(true) @map("is_active")
+
+  tenant Tenant @relation("ChargeType_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  agreementChargesByChargeType AgreementCharge[] @relation("AgreementCharge_chargeType")
+  invoiceLinesByChargeType InvoiceLine[] @relation("InvoiceLine_chargeType")
+
+  @@unique([tenantId, code])
+  @@unique([tenantId, id])
+  @@map("charge_types")
+}
+
+model AgreementCharge {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  agreementId String @db.Uuid @map("agreement_id")
+  chargeTypeId String @db.Uuid @map("charge_type_id")
+  description String?
+  amount Decimal @db.Decimal(14, 2)
+  frequency ChargeFrequency @default(MONTHLY)
+  startDate DateTime @db.Date @map("start_date")
+  endDate DateTime? @db.Date @map("end_date")
+  isActive Boolean @default(true) @map("is_active")
+
+  tenant Tenant @relation("AgreementCharge_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  agreement Agreement @relation("AgreementCharge_agreement", fields: [tenantId, agreementId], references: [tenantId, id], onDelete: Restrict)
+  chargeType ChargeType @relation("AgreementCharge_chargeType", fields: [tenantId, chargeTypeId], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([tenantId, agreementId])
+  @@unique([tenantId, id])
+  @@map("agreement_charges")
+}
+
+// [V2]
+model RentEscalation {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  agreementId String @db.Uuid @map("agreement_id")
+  effectiveDate DateTime @db.Date @map("effective_date")
+  percent Decimal? @db.Decimal(5, 2)
+  fixedAmount Decimal? @db.Decimal(14, 2) @map("fixed_amount")
+  appliedAt DateTime? @db.Timestamptz(6) @map("applied_at")
+
+  tenant Tenant @relation("RentEscalation_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  agreement Agreement @relation("RentEscalation_agreement", fields: [tenantId, agreementId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@map("rent_escalations")
+}
+
+model InvoiceCounter {
+  tenantId String @db.Uuid @map("tenant_id")
+  year Int
+  lastValue Int @default(0) @map("last_value")
+
+  tenant Tenant @relation("InvoiceCounter_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@id([tenantId, year])
+  @@map("invoice_counters")
+}
+
+// CHECK + partial unique (AUTO) + immutability trigger → sql ফাইল
+model Invoice {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  propertyId String @db.Uuid @map("property_id")
+  agreementId String @db.Uuid @map("agreement_id")
+  renterId String @db.Uuid @map("renter_id")
+  number String?
+  status InvoiceStatus @default(DRAFT)
+  periodStart DateTime @db.Date @map("period_start")
+  periodEnd DateTime @db.Date @map("period_end")
+  issueDate DateTime? @db.Date @map("issue_date")
+  dueDate DateTime @db.Date @map("due_date")
+  subtotal Decimal @db.Decimal(14, 2)
+  total Decimal @db.Decimal(14, 2)
+  paidAmount Decimal @default(0) @db.Decimal(14, 2) @map("paid_amount")
+  currency String @default("BDT") @db.Char(3)
+  voidReason String? @map("void_reason")
+  voidedAt DateTime? @db.Timestamptz(6) @map("voided_at")
+  voidedById String? @db.Uuid @map("voided_by_id")
+  source InvoiceSource @default(AUTO)
+  notes String?
+  version Int @default(1)
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt DateTime @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  tenant Tenant @relation("Invoice_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  property Property @relation("Invoice_property", fields: [tenantId, propertyId], references: [tenantId, id], onDelete: Restrict)
+  agreement Agreement @relation("Invoice_agreement", fields: [tenantId, agreementId], references: [tenantId, id], onDelete: Restrict)
+  renter Renter @relation("Invoice_renter", fields: [tenantId, renterId], references: [tenantId, id], onDelete: Restrict)
+  voidedBy User? @relation("Invoice_voidedBy", fields: [tenantId, voidedById], references: [tenantId, id], onDelete: Restrict)
+  invoiceLinesByInvoice InvoiceLine[] @relation("InvoiceLine_invoice")
+  paymentAllocationsByInvoice PaymentAllocation[] @relation("PaymentAllocation_invoice")
+  depositTransactionsByRelatedInvoice DepositTransaction[] @relation("DepositTransaction_relatedInvoice")
+
+  @@unique([tenantId, number])
+  @@index([tenantId, renterId, status])
+  @@index([tenantId, propertyId, status, dueDate])
+  @@index([tenantId, periodStart])
+  @@unique([tenantId, id])
+  @@map("invoices")
+}
+
+model InvoiceLine {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  invoiceId String @db.Uuid @map("invoice_id")
+  chargeTypeId String @db.Uuid @map("charge_type_id")
+  description String
+  quantity Decimal @default(1) @db.Decimal(10, 2)
+  unitAmount Decimal @db.Decimal(14, 2) @map("unit_amount")
+  amount Decimal @db.Decimal(14, 2)
+  meterReadingId String? @db.Uuid @map("meter_reading_id")
+  sort Int @default(0)
+
+  tenant Tenant @relation("InvoiceLine_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  invoice Invoice @relation("InvoiceLine_invoice", fields: [tenantId, invoiceId], references: [tenantId, id], onDelete: Restrict)
+  chargeType ChargeType @relation("InvoiceLine_chargeType", fields: [tenantId, chargeTypeId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@map("invoice_lines")
+}
+
+// updatedAt ইচ্ছা করে নেই (immutable). partial unique (method, reference) → sql ফাইল
+model Payment {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  propertyId String? @db.Uuid @map("property_id")
+  renterId String @db.Uuid @map("renter_id")
+  receiptNumber String @map("receipt_number")
+  status PaymentStatus @default(RECORDED)
+  amount Decimal @db.Decimal(14, 2)
+  currency String @default("BDT") @db.Char(3)
+  method PaymentMethod
+  reference String?
+  paidAt DateTime @db.Timestamptz(6) @map("paid_at")
+  receivedById String? @db.Uuid @map("received_by_id")
+  recordedById String @db.Uuid @map("recorded_by_id")
+  notes String?
+  idempotencyKey String @map("idempotency_key")
+  gatewayTxnId String? @map("gateway_txn_id")
+  voidReason String? @map("void_reason")
+  voidedAt DateTime? @db.Timestamptz(6) @map("voided_at")
+  voidedById String? @db.Uuid @map("voided_by_id")
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  tenant Tenant @relation("Payment_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  property Property? @relation("Payment_property", fields: [tenantId, propertyId], references: [tenantId, id], onDelete: Restrict)
+  renter Renter @relation("Payment_renter", fields: [tenantId, renterId], references: [tenantId, id], onDelete: Restrict)
+  receivedBy User? @relation("Payment_receivedBy", fields: [tenantId, receivedById], references: [tenantId, id], onDelete: Restrict)
+  recordedBy User @relation("Payment_recordedBy", fields: [tenantId, recordedById], references: [tenantId, id], onDelete: Restrict)
+  voidedBy User? @relation("Payment_voidedBy", fields: [tenantId, voidedById], references: [tenantId, id], onDelete: Restrict)
+  paymentAllocationsByPayment PaymentAllocation[] @relation("PaymentAllocation_payment")
+
+  @@unique([tenantId, receiptNumber])
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, renterId, paidAt(sort: Desc)])
+  @@index([tenantId, paidAt])
+  @@unique([tenantId, id])
+  @@map("payments")
+}
+
+// reversalOf self-FK → sql ফাইল
+model PaymentAllocation {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  paymentId String @db.Uuid @map("payment_id")
+  invoiceId String? @db.Uuid @map("invoice_id")
+  amount Decimal @db.Decimal(14, 2)
+  kind AllocationKind
+  reversedAt DateTime? @db.Timestamptz(6) @map("reversed_at")
+  reversalOf String? @db.Uuid @map("reversal_of")
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  tenant Tenant @relation("PaymentAllocation_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  payment Payment @relation("PaymentAllocation_payment", fields: [tenantId, paymentId], references: [tenantId, id], onDelete: Restrict)
+  invoice Invoice? @relation("PaymentAllocation_invoice", fields: [tenantId, invoiceId], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([tenantId, invoiceId])
+  @@index([tenantId, paymentId])
+  @@unique([tenantId, id])
+  @@map("payment_allocations")
+}
+
+// CHECK balance >= 0
+model Deposit {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  agreementId String @db.Uuid @map("agreement_id")
+  renterId String @db.Uuid @map("renter_id")
+  balance Decimal @default(0) @db.Decimal(14, 2)
+
+  tenant Tenant @relation("Deposit_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  agreement Agreement @relation("Deposit_agreement", fields: [tenantId, agreementId], references: [tenantId, id], onDelete: Restrict)
+  renter Renter @relation("Deposit_renter", fields: [tenantId, renterId], references: [tenantId, id], onDelete: Restrict)
+  depositTransactionsByDeposit DepositTransaction[] @relation("DepositTransaction_deposit")
+
+  @@unique([tenantId, agreementId])
+  @@unique([tenantId, id])
+  @@map("deposits")
+}
+
+// append-only
+model DepositTransaction {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  depositId String @db.Uuid @map("deposit_id")
+  type DepositTxnType
+  amount Decimal @db.Decimal(14, 2)
+  method PaymentMethod?
+  reference String?
+  reason String?
+  relatedInvoiceId String? @db.Uuid @map("related_invoice_id")
+  createdById String @db.Uuid @map("created_by_id")
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  tenant Tenant @relation("DepositTransaction_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  deposit Deposit @relation("DepositTransaction_deposit", fields: [tenantId, depositId], references: [tenantId, id], onDelete: Restrict)
+  relatedInvoice Invoice? @relation("DepositTransaction_relatedInvoice", fields: [tenantId, relatedInvoiceId], references: [tenantId, id], onDelete: Restrict)
+  createdBy User @relation("DepositTransaction_createdBy", fields: [tenantId, createdById], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@map("deposit_transactions")
+}
+
+// [V2]
+model LateFeeRule {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  propertyId String? @db.Uuid @map("property_id")
+  graceDays Int @default(0) @map("grace_days")
+  type LateFeeType
+  value Decimal @db.Decimal(14, 2)
+  maxCap Decimal? @db.Decimal(14, 2) @map("max_cap")
+  isActive Boolean @default(true) @map("is_active")
+
+  tenant Tenant @relation("LateFeeRule_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  property Property? @relation("LateFeeRule_property", fields: [tenantId, propertyId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@map("late_fee_rules")
+}
+
+// [V2]
+model UtilityMeter {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  spaceId String @db.Uuid @map("space_id")
+  kind UtilityKind
+  meterNo String @map("meter_no")
+  unitRate Decimal @db.Decimal(10, 4) @map("unit_rate")
+
+  tenant Tenant @relation("UtilityMeter_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  space Space @relation("UtilityMeter_space", fields: [tenantId, spaceId], references: [tenantId, id], onDelete: Restrict)
+  meterReadingsByMeter MeterReading[] @relation("MeterReading_meter")
+
+  @@unique([tenantId, id])
+  @@map("utility_meters")
+}
+
+// [V2] consumption = reading - previousReading (অ্যাপে হিসাব; generated column নয়, যাতে Prisma drift না হয়)
+model MeterReading {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  meterId String @db.Uuid @map("meter_id")
+  readingDate DateTime @db.Date @map("reading_date")
+  reading Decimal @db.Decimal(12, 2)
+  previousReading Decimal @default(0) @db.Decimal(12, 2) @map("previous_reading")
+  createdById String @db.Uuid @map("created_by_id")
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  tenant Tenant @relation("MeterReading_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  meter UtilityMeter @relation("MeterReading_meter", fields: [tenantId, meterId], references: [tenantId, id], onDelete: Restrict)
+  createdBy User @relation("MeterReading_createdBy", fields: [tenantId, createdById], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([meterId, readingDate])
+  @@unique([tenantId, id])
+  @@map("meter_readings")
+}
+
+model LedgerAccount {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  code String
+  name String
+  type LedgerAccountType
+  isSystem Boolean @default(false) @map("is_system")
+
+  tenant Tenant @relation("LedgerAccount_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  ledgerEntrysByAccount LedgerEntry[] @relation("LedgerEntry_account")
+
+  @@unique([tenantId, code])
+  @@unique([tenantId, id])
+  @@map("ledger_accounts")
+}
+
+// append-only; self-FK reversedByJournalId → sql ফাইল
+model Journal {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  sourceType JournalSource @map("source_type")
+  sourceId String @db.Uuid @map("source_id")
+  description String?
+  postedAt DateTime @default(now()) @db.Timestamptz(6) @map("posted_at")
+  createdById String? @db.Uuid @map("created_by_id")
+  reversedByJournalId String? @db.Uuid @map("reversed_by_journal_id")
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  tenant Tenant @relation("Journal_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  createdBy User? @relation("Journal_createdBy", fields: [tenantId, createdById], references: [tenantId, id], onDelete: Restrict)
+  ledgerEntrysByJournal LedgerEntry[] @relation("LedgerEntry_journal")
+
+  @@unique([tenantId, id])
+  @@map("journals")
+}
+
+// append-only; CHECK ((debit=0) <> (credit=0)); journal ভারসাম্য trigger → sql ফাইল
+model LedgerEntry {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  journalId String @db.Uuid @map("journal_id")
+  accountId String @db.Uuid @map("account_id")
+  propertyId String? @db.Uuid @map("property_id")
+  debit Decimal @default(0) @db.Decimal(14, 2)
+  credit Decimal @default(0) @db.Decimal(14, 2)
+  currency String @default("BDT") @db.Char(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  tenant Tenant @relation("LedgerEntry_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  journal Journal @relation("LedgerEntry_journal", fields: [tenantId, journalId], references: [tenantId, id], onDelete: Restrict)
+  account LedgerAccount @relation("LedgerEntry_account", fields: [tenantId, accountId], references: [tenantId, id], onDelete: Restrict)
+  property Property? @relation("LedgerEntry_property", fields: [tenantId, propertyId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@map("ledger_entries")
+}
+
+model ExpenseCategory {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  code String
+  nameBn String @map("name_bn")
+  nameEn String @map("name_en")
+  isActive Boolean @default(true) @map("is_active")
+
+  tenant Tenant @relation("ExpenseCategory_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  expensesByCategory Expense[] @relation("Expense_category")
+
+  @@unique([tenantId, code])
+  @@unique([tenantId, id])
+  @@map("expense_categories")
+}
+
+// [V2]
+model Vendor {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  name String
+  phone String?
+  trade String?
+  notes String?
+  deletedAt DateTime? @db.Timestamptz(6) @map("deleted_at")
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt DateTime @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  tenant Tenant @relation("Vendor_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  expensesByVendor Expense[] @relation("Expense_vendor")
+
+  @@unique([tenantId, id])
+  @@map("vendors")
+}
+
+model Expense {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  propertyId String? @db.Uuid @map("property_id")
+  categoryId String @db.Uuid @map("category_id")
+  vendorId String? @db.Uuid @map("vendor_id")
+  amount Decimal @db.Decimal(14, 2)
+  currency String @default("BDT") @db.Char(3)
+  expenseDate DateTime @db.Date @map("expense_date")
+  description String?
+  receiptDocumentId String? @db.Uuid @map("receipt_document_id")
+  status ExpenseStatus @default(RECORDED)
+  voidReason String? @map("void_reason")
+  createdById String @db.Uuid @map("created_by_id")
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  tenant Tenant @relation("Expense_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  property Property? @relation("Expense_property", fields: [tenantId, propertyId], references: [tenantId, id], onDelete: Restrict)
+  category ExpenseCategory @relation("Expense_category", fields: [tenantId, categoryId], references: [tenantId, id], onDelete: Restrict)
+  vendor Vendor? @relation("Expense_vendor", fields: [tenantId, vendorId], references: [tenantId, id], onDelete: Restrict)
+  receiptDocument Document? @relation("Expense_receiptDocument", fields: [tenantId, receiptDocumentId], references: [tenantId, id], onDelete: Restrict)
+  createdBy User @relation("Expense_createdBy", fields: [tenantId, createdById], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([tenantId, propertyId, expenseDate])
+  @@index([tenantId, expenseDate])
+  @@unique([tenantId, id])
+  @@map("expenses")
+}
+
+// [V2] প্রতি property তে Σpercent = 100 (অ্যাপ+trigger)
+model OwnershipShare {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  propertyId String @db.Uuid @map("property_id")
+  coOwnerUserId String @db.Uuid @map("co_owner_user_id")
+  percent Decimal @db.Decimal(5, 2)
+
+  tenant Tenant @relation("OwnershipShare_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  property Property @relation("OwnershipShare_property", fields: [tenantId, propertyId], references: [tenantId, id], onDelete: Restrict)
+  coOwner User @relation("OwnershipShare_coOwner", fields: [tenantId, coOwnerUserId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@map("ownership_shares")
+}
+
+model MaintenanceRequest {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  propertyId String @db.Uuid @map("property_id")
+  spaceId String? @db.Uuid @map("space_id")
+  renterId String? @db.Uuid @map("renter_id")
+  createdByUserId String @db.Uuid @map("created_by_user_id")
+  title String
+  description String
+  priority MaintenancePriority @default(MEDIUM)
+  status MaintenanceStatus @default(OPEN)
+  assignedToId String? @db.Uuid @map("assigned_to_id")
+  resolvedAt DateTime? @db.Timestamptz(6) @map("resolved_at")
+  closedAt DateTime? @db.Timestamptz(6) @map("closed_at")
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt DateTime @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  tenant Tenant @relation("MaintenanceRequest_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  property Property @relation("MaintenanceRequest_property", fields: [tenantId, propertyId], references: [tenantId, id], onDelete: Restrict)
+  space Space? @relation("MaintenanceRequest_space", fields: [tenantId, spaceId], references: [tenantId, id], onDelete: Restrict)
+  renter Renter? @relation("MaintenanceRequest_renter", fields: [tenantId, renterId], references: [tenantId, id], onDelete: Restrict)
+  createdByUser User @relation("MaintenanceRequest_createdByUser", fields: [tenantId, createdByUserId], references: [tenantId, id], onDelete: Restrict)
+  assignedTo User? @relation("MaintenanceRequest_assignedTo", fields: [tenantId, assignedToId], references: [tenantId, id], onDelete: Restrict)
+  maintenanceCommentsByRequest MaintenanceComment[] @relation("MaintenanceComment_request")
+  maintenanceAttachmentsByRequest MaintenanceAttachment[] @relation("MaintenanceAttachment_request")
+
+  @@index([tenantId, propertyId, status])
+  @@unique([tenantId, id])
+  @@map("maintenance_requests")
+}
+
+model MaintenanceComment {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  requestId String @db.Uuid @map("request_id")
+  authorUserId String @db.Uuid @map("author_user_id")
+  body String
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  tenant Tenant @relation("MaintenanceComment_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  request MaintenanceRequest @relation("MaintenanceComment_request", fields: [tenantId, requestId], references: [tenantId, id], onDelete: Restrict)
+  author User @relation("MaintenanceComment_author", fields: [tenantId, authorUserId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@map("maintenance_comments")
+}
+
+model MaintenanceAttachment {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  requestId String @db.Uuid @map("request_id")
+  documentId String @db.Uuid @map("document_id")
+
+  tenant Tenant @relation("MaintenanceAttachment_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  request MaintenanceRequest @relation("MaintenanceAttachment_request", fields: [tenantId, requestId], references: [tenantId, id], onDelete: Restrict)
+  document Document @relation("MaintenanceAttachment_document", fields: [tenantId, documentId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@map("maintenance_attachments")
+}
+
+model Notice {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  title String
+  body String
+  audience NoticeAudience
+  propertyId String? @db.Uuid @map("property_id")
+  channels NotificationChannel[]
+  createdById String @db.Uuid @map("created_by_id")
+  sentAt DateTime? @db.Timestamptz(6) @map("sent_at")
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  tenant Tenant @relation("Notice_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  property Property? @relation("Notice_property", fields: [tenantId, propertyId], references: [tenantId, id], onDelete: Restrict)
+  createdBy User @relation("Notice_createdBy", fields: [tenantId, createdById], references: [tenantId, id], onDelete: Restrict)
+  noticeRecipientsByNotice NoticeRecipient[] @relation("NoticeRecipient_notice")
+
+  @@unique([tenantId, id])
+  @@map("notices")
+}
+
+model NoticeRecipient {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  noticeId String @db.Uuid @map("notice_id")
+  renterId String @db.Uuid @map("renter_id")
+  readAt DateTime? @db.Timestamptz(6) @map("read_at")
+
+  tenant Tenant @relation("NoticeRecipient_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  notice Notice @relation("NoticeRecipient_notice", fields: [tenantId, noticeId], references: [tenantId, id], onDelete: Restrict)
+  renter Renter @relation("NoticeRecipient_renter", fields: [tenantId, renterId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([noticeId, renterId])
+  @@unique([tenantId, id])
+  @@map("notice_recipients")
+}
+
+model NotificationOutbox {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  channel NotificationChannel
+  toUserId String? @db.Uuid @map("to_user_id")
+  toAddress String @map("to_address")
+  templateCode String @map("template_code")
+  payload Json
+  status NotificationStatus @default(QUEUED)
+  attempts Int @default(0)
+  nextAttemptAt DateTime @default(now()) @db.Timestamptz(6) @map("next_attempt_at")
+  providerMessageId String? @map("provider_message_id")
+  error String?
+  relatedType String? @map("related_type")
+  relatedId String? @db.Uuid @map("related_id")
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  sentAt DateTime? @db.Timestamptz(6) @map("sent_at")
+
+  tenant Tenant @relation("NotificationOutbox_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  toUser User? @relation("NotificationOutbox_toUser", fields: [tenantId, toUserId], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([status, nextAttemptAt])
+  @@index([tenantId, createdAt])
+  @@unique([tenantId, id])
+  @@map("notification_outbox")
+}
+
+model InAppNotification {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  userId String @db.Uuid @map("user_id")
+  title String
+  body String
+  link String?
+  readAt DateTime? @db.Timestamptz(6) @map("read_at")
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  tenant Tenant @relation("InAppNotification_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  user User @relation("InAppNotification_user", fields: [tenantId, userId], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([tenantId, userId, readAt])
+  @@unique([tenantId, id])
+  @@map("in_app_notifications")
+}
+
+model SmsUsage {
+  tenantId String @db.Uuid @map("tenant_id")
+  month String
+  segmentsUsed Int @default(0) @map("segments_used")
+
+  tenant Tenant @relation("SmsUsage_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@id([tenantId, month])
+  @@map("sms_usage")
+}
+
+model ImportJob {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  kind ImportKind
+  status ImportStatus @default(UPLOADED)
+  fileDocumentId String @db.Uuid @map("file_document_id")
+  totalRows Int @default(0) @map("total_rows")
+  validRows Int @default(0) @map("valid_rows")
+  importedRows Int @default(0) @map("imported_rows")
+  errorReportDocumentId String? @db.Uuid @map("error_report_document_id")
+  createdById String @db.Uuid @map("created_by_id")
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt DateTime @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  tenant Tenant @relation("ImportJob_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  fileDocument Document @relation("ImportJob_fileDocument", fields: [tenantId, fileDocumentId], references: [tenantId, id], onDelete: Restrict)
+  errorReportDocument Document? @relation("ImportJob_errorReportDocument", fields: [tenantId, errorReportDocumentId], references: [tenantId, id], onDelete: Restrict)
+  createdBy User @relation("ImportJob_createdBy", fields: [tenantId, createdById], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@map("import_jobs")
+}
+
+model IdempotencyKey {
+  tenantId String @db.Uuid @map("tenant_id")
+  key String
+  endpoint String
+  requestHash String @map("request_hash")
+  responseStatus Int? @map("response_status")
+  responseBody Json? @map("response_body")
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  expiresAt DateTime @db.Timestamptz(6) @map("expires_at")
+
+  tenant Tenant @relation("IdempotencyKey_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@id([tenantId, key, endpoint])
+  @@index([expiresAt])
+  @@map("idempotency_keys")
+}
+
+// append-only
+// role/permission বদলের অ্যাকশন (যেমন "role.permissions.update") এখানে লগ হবে; before/after এ permission code তালিকা
+model AuditLog {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  userId String? @db.Uuid @map("user_id")
+  actorKind ActorKind @map("actor_kind")
+  action String
+  entityType String @map("entity_type")
+  entityId String? @map("entity_id")
+  before Json?
+  after Json?
+  ip String?
+  requestId String? @map("request_id")
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  tenant Tenant @relation("AuditLog_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  user User? @relation("AuditLog_user", fields: [tenantId, userId], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([tenantId, createdAt(sort: Desc)])
+  @@index([tenantId, entityType, entityId])
+  @@unique([tenantId, id])
+  @@map("audit_logs")
+}
+
+model TenantFeatureFlag {
+  tenantId String @db.Uuid @map("tenant_id")
+  flag String
+  enabled Boolean @default(false)
+
+  tenant Tenant @relation("TenantFeatureFlag_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@id([tenantId, flag])
+  @@map("tenant_feature_flags")
+}
+
+// [V2]
+model AiConversation {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  userId String @db.Uuid @map("user_id")
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  tenant Tenant @relation("AiConversation_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  user User @relation("AiConversation_user", fields: [tenantId, userId], references: [tenantId, id], onDelete: Restrict)
+  aiMessagesByConversation AiMessage[] @relation("AiMessage_conversation")
+
+  @@unique([tenantId, id])
+  @@map("ai_conversations")
+}
+
+// [V2]
+model AiMessage {
+  id String @id @default(uuid(7)) @db.Uuid
+  tenantId String @db.Uuid @map("tenant_id")
+  conversationId String @db.Uuid @map("conversation_id")
+  role AiRole
+  content String
+  toolCalls Json? @map("tool_calls")
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  tenant Tenant @relation("AiMessage_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  conversation AiConversation @relation("AiMessage_conversation", fields: [tenantId, conversationId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@map("ai_messages")
+}
