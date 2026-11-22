@@ -141,7 +141,7 @@ web ↔ api server-to-server কল; ব্রাউজার সরাসরি
 | বিষয় | সিদ্ধান্ত | কেন |
 |---|---|---|
 | Session | opaque টোকেন, DB তে হ্যাশ, rolling expiry | JWT revoke কঠিন; suspend/role-change এ তাৎক্ষণিক বাতিল দরকার |
-| Staff পাসওয়ার্ড | argon2id | আধুনিক সুপারিশ |
+| Staff পাসওয়ার্ড | bcryptjs (work factor ≥10; 72-byte input limit) | project choice; target hardware-এ benchmark |
 | Renter লগইন | মোবাইল + OTP | ইমেইল না থাকা বাস্তবতা |
 | Platform | আলাদা টেবিল, আলাদা host/cookie, MFA বাধ্যতামূলক | সর্বোচ্চ ঝুঁকির অ্যাকাউন্ট |
 | RBAC | permission code → role → membership (+ property scope) | সরল, অডিটযোগ্য |

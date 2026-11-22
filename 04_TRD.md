@@ -57,7 +57,7 @@
 | ORM/Query | **Drizzle ORM** + `drizzle-kit` (migration) | latest stable (**0.4x**; P0-03 এ লক) |
 | DB driver | `pg` (node-postgres) | **8.x** |
 | Validation | Zod (`nestjs-zod`) — shared schema `packages/shared` | Zod **4.x** |
-| Auth | নিজস্ব: `argon2` পাসওয়ার্ড হ্যাশ + opaque session token (DB-backed) | argon2 **0.4x** |
+| Auth | নিজস্ব: `bcryptjs` পাসওয়ার্ড হ্যাশ (cost 12; benchmark করে নিশ্চিত) + opaque session token (DB-backed) | `bcryptjs` **3.x** |
 | MFA (platform) | `otplib` (TOTP) | latest |
 | Queue | BullMQ | **5.x** |
 | Cache/Queue broker | Redis | **7.x/8.x** |
@@ -225,7 +225,7 @@ HTTP → Fastify
 ### 2.8 Authentication ও Authorization ডিজাইন
 
 **Session:** opaque 256-bit random token, DB এ SHA-256 হ্যাশ সংরক্ষিত; ইনঅ্যাক্টিভ ৩০ মিনিট (staff) / ৩০ দিন rolling (renter portal), অ্যাবসোলিউট ৩০ দিন; লগআউটে সার্ভারে বাতিল।
-**Password:** argon2id (memory 64MB, t=3, p=1), ন্যূনতম ১০ অক্ষর, breached-password চেক (HIBP k-anonymity [V2])।
+**Password:** `bcryptjs` work factor কমপক্ষে 10 (প্রাথমিকভাবে 12; production hardware-এ benchmark), UTF-8 এ সর্বোচ্চ 72 byte; ন্যূনতম ১০ অক্ষর, breached-password চেক (HIBP k-anonymity [V2])। Login ও registration-এ 72-byte সীমা hash করার আগেই যাচাই করতে হবে।
 **Brute-force:** অ্যাকাউন্ট + IP উভয় ভিত্তিতে রেট লিমিট; ৫ ব্যর্থ → ১৫ মিনিট লক।
 **OTP:** ৬ সংখ্যা, TTL ৫ মিনিট, Redis এ হ্যাশ, ৫ চেষ্টা, রিসেন্ড cooldown ৬০s।
 **CSRF:** SameSite=Lax + কাস্টম হেডার (`X-Requested-With`) + Origin চেক; state-changing শুধু POST/PUT/PATCH/DELETE।

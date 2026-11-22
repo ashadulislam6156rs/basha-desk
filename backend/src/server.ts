@@ -1,23 +1,21 @@
-import "dotenv/config";
-import cors from "cors";
-import express from "express";
-import helmet from "helmet";
+import { app } from "./app.js";
+import { env } from "./config/env.js";
 
-const app = express();
-const port = Number(process.env.PORT ?? 4000);
-const allowedOrigins = (process.env.CORS_ORIGIN ?? "http://localhost:3000")
-  .split(",")
-  .map((origin) => origin.trim())
-  .filter(Boolean);
-
-app.use(helmet());
-app.use(cors({ origin: allowedOrigins }));
-app.use(express.json({ limit: "1mb" }));
-
-app.get("/health", (_request, response) => {
-  response.json({ status: "ok" });
+const server = app.listen(env.PORT, () => {
+  console.log(`Basha Desk API listening on port ${env.PORT}`);
 });
 
-app.listen(port, () => {
-  console.log(`Backend listening on http://localhost:${port}`);
-});
+function shutdown(signal: string) {
+  console.log(`${signal} received; closing HTTP server`);
+  server.close((error) => {
+    if (error) {
+      console.error("Failed to close HTTP server cleanly", error);
+      process.exitCode = 1;
+      return;
+    }
+    process.exitCode = 0;
+  });
+}
+
+process.once("SIGINT", () => shutdown("SIGINT"));
+process.once("SIGTERM", () => shutdown("SIGTERM"));
