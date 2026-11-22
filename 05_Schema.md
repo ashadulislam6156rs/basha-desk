@@ -527,7 +527,7 @@ Platform কাজ `app_platform` রোলে, control-plane টেবিল �
 1. Host → tenant_id (registry)             ← tenant_domains JOIN tenants (status=READY)
 2. set_config(app.tenant_id)
 3. users WHERE (phone|email) AND kind='STAFF' AND is_active
-4. argon2 verify → ব্যর্থ: failed_login_count++, ৫ এ locked_until
+4. bcrypt compare → ব্যর্থ: failed_login_count++, ৫ এ locked_until
 5. sessions INSERT (token_hash)           → Set-Cookie __Host-sid (HttpOnly,Secure,SameSite=Lax)
 6. memberships + role_permissions লোড → request context
 7. audit_logs: auth.login

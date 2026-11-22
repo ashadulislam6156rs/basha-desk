@@ -17,14 +17,20 @@
 //   Owner role→membership) আলাদা: prisma/tenant-defaults.ts এর seedTenantDefaults()।
 // =====================================================================================
 
+import "dotenv/config";
 import {
   PrismaClient,
   PermissionAction as A,
   PermissionScopeType as S,
 } from '@prisma/client';
-import * as argon2 from 'argon2'; // আপনার auth যে hasher ব্যবহার করে সেটাই রাখুন (bcrypt হলে বদলান)
+import { PrismaNeon } from '@prisma/adapter-neon';
+import bcrypt from 'bcryptjs';
 
-const prisma = new PrismaClient();
+const migrationUrl = process.env.DATABASE_MIGRATE_URL;
+if (!migrationUrl) throw new Error('DATABASE_MIGRATE_URL সেট করা নেই');
+const prisma = new PrismaClient({
+  adapter: new PrismaNeon({ connectionString: migrationUrl }),
+});
 
 // ------------------------------------------------------------------------------------
 // Action লেবেল (UI matrix এর কলাম)
@@ -424,6 +430,9 @@ async function seedSuperAdminUser() {
     return;
   }
   if (password.length < 12) throw new Error('SEED_SUPER_ADMIN_PASSWORD কমপক্ষে ১২ অক্ষরের হতে হবে');
+  if (bcrypt.truncates(password)) {
+    throw new Error('SEED_SUPER_ADMIN_PASSWORD bcrypt-এর ৭২-বাইট সীমার মধ্যে হতে হবে');
+  }
 
   const role = await prisma.platformRole.findUniqueOrThrow({ where: { code: 'SUPER_ADMIN' } });
   const existing = await prisma.platformUser.findUnique({ where: { email } });
@@ -433,7 +442,7 @@ async function seedSuperAdminUser() {
     console.log(`✔ Super Admin (existing): ${email}`);
     return;
   }
-  const passwordHash = await argon2.hash(password, { type: argon2.argon2id });
+  const passwordHash = await bcrypt.hash(password, 12);
   await prisma.platformUser.create({
     data: { email, name: process.env.SEED_SUPER_ADMIN_NAME ?? 'Super Admin', passwordHash, roleId: role.id },
   });

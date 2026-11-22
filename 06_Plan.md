@@ -47,7 +47,7 @@
 - [ ] P1-17 — NestJS `apps/api` বুটস্ট্র্যাপ (Fastify, pino, requestId, ProblemDetails filter, config) · Done when: `/health/live`, `/health/ready` কাজ করে
 - [ ] P1-18 — Zod pipe (`nestjs-zod`), ProblemDetails এরর ম্যাপিং, i18n এরর কোড · Done when: ভুল ইনপুটে 422 + ফিল্ড map
 - [ ] P1-19 — Tenant resolution: `TenantResolver` (host → registry, Redis cache ৬০s, invalidation) + `TenantGuard` (status READY, host tenant = session tenant) · Done when: SUSPENDED/অজানা host এ সঠিক এরর; mismatch এ 401
-- [ ] P1-20 — Password hashing (argon2id), `Session` সার্ভিস (opaque token, hash সংরক্ষণ, rolling expiry, revoke) · Done when: টেস্ট: ভুল/মেয়াদোত্তীর্ণ/revoked টোকেন প্রত্যাখ্যাত
+- [ ] P1-20 — Password hashing (`bcryptjs`, work factor ≥10; প্রাথমিক 12, benchmark-সহ), `Session` সার্ভিস (opaque token, hash সংরক্ষণ, rolling expiry, revoke) · Done when: 72-byte password limit enforce হয়; ভুল/মেয়াদোত্তীর্ণ/revoked token প্রত্যাখ্যাত
 - [ ] P1-21 — Staff login/logout/me API + brute-force lock (৫ ব্যর্থ → ১৫মি) + rate limit · Done when: লক ও আনলক টেস্ট পাস
 - [ ] P1-22 — Renter OTP: request-otp / verify-otp (Redis TTL, attempts, cooldown, enumeration-safe বার্তা) · Done when: সব সীমা টেস্টে প্রমাণিত
 - [ ] P1-23 — CSRF/Origin গার্ড, cookie `__Host-sid` কনফিগ, CORS allow-list · Done when: ভুল Origin এ POST প্রত্যাখ্যাত
