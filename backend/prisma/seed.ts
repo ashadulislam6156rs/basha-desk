@@ -23,8 +23,12 @@ import {
   PermissionAction as A,
   PermissionScopeType as S,
 } from '@prisma/client';
+import { neonConfig } from '@neondatabase/serverless';
 import { PrismaNeon } from '@prisma/adapter-neon';
 import bcrypt from 'bcryptjs';
+import ws from 'ws';
+
+neonConfig.webSocketConstructor = ws;
 
 const migrationUrl = process.env.DATABASE_MIGRATE_URL;
 if (!migrationUrl) throw new Error('DATABASE_MIGRATE_URL সেট করা নেই');

@@ -1,23 +1,35 @@
 import "dotenv/config";
 import { defineConfig, env } from "prisma/config";
 
+// This CLI config sits outside tsconfig's src/ include, so type the small
+// subset of Node's process API it uses here instead of relying on globals.
+declare const process: {
+  argv: string[];
+  env: Record<string, string | undefined>;
+};
+
 const migrationUrl = env("DATABASE_MIGRATE_URL");
 const prismaArgs = process.argv.slice(2);
 const isDatabaseWriteCommand =
-  (prismaArgs[0] === "migrate" && ["dev", "deploy", "reset"].includes(prismaArgs[1] ?? "")) ||
-  (prismaArgs[0] === "db" && ["push", "execute", "seed"].includes(prismaArgs[1] ?? ""));
+  (prismaArgs[0] === "migrate" &&
+    ["dev", "deploy", "reset"].includes(prismaArgs[1] ?? "")) ||
+  (prismaArgs[0] === "db" &&
+    ["push", "execute", "seed"].includes(prismaArgs[1] ?? ""));
 
 if (isDatabaseWriteCommand) {
   const target = process.env.DATABASE_TARGET;
   const productionWriteIsExplicit =
-    target === "production" && process.env.ALLOW_PRODUCTION_MIGRATIONS === "YES";
+    target === "production" &&
+    process.env.ALLOW_PRODUCTION_MIGRATIONS === "YES";
   if (target !== "development" && !productionWriteIsExplicit) {
     throw new Error(
       "Database write blocked: set DATABASE_TARGET=development, or explicitly enable production with DATABASE_TARGET=production and ALLOW_PRODUCTION_MIGRATIONS=YES.",
     );
   }
   if (new URL(migrationUrl).hostname.includes("-pooler")) {
-    throw new Error("Database writes blocked: DATABASE_MIGRATE_URL must use the direct (non-pooler) endpoint.");
+    throw new Error(
+      "Database writes blocked: DATABASE_MIGRATE_URL must use the direct (non-pooler) endpoint.",
+    );
   }
 }
 
