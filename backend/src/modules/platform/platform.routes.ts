@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { AppError } from "../../common/app-error.js";
+import { paginationMeta, parseListQuery } from "../../common/list-query.js";
 import { prisma } from "../../db/prisma.js";
 import { loginRateLimit } from "../../middleware/rate-limit.js";
 import { createTotpSecret, decryptTotpSecret, encryptTotpSecret, totpUri, verifyTotp } from "./totp.js";
@@ -281,29 +282,64 @@ router.post("/invites/accept", loginRateLimit, async (request, response) => {
 
 router.use(platformAuth, requireSuperAdmin);
 
-router.get("/invites", async (_request, response) => {
-  const invites = await prisma.platformInvite.findMany({
-    where: { status: "PENDING", expiresAt: { gt: new Date() } },
-    include: { role: { select: { id: true, code: true, nameBn: true, nameEn: true } } },
-    orderBy: { createdAt: "desc" },
-  });
-  response.json({ invites });
+router.get("/invites", async (request, response) => {
+  const query = parseListQuery(request.query, ["createdAt", "expiresAt", "email"], "createdAt");
+  const where: Prisma.PlatformInviteWhereInput = {
+    status: "PENDING",
+    expiresAt: { gt: new Date() },
+    ...(query.search ? { email: { contains: query.search, mode: "insensitive" } } : {}),
+  };
+  const orderBy = [{ [query.sort]: query.order }, { id: "asc" }] as Prisma.PlatformInviteOrderByWithRelationInput[];
+  const [invites, total] = await prisma.$transaction([
+    prisma.platformInvite.findMany({
+      where,
+      include: { role: { select: { id: true, code: true, nameBn: true, nameEn: true } } },
+      orderBy,
+      skip: query.skip,
+      take: query.take,
+    }),
+    prisma.platformInvite.count({ where }),
+  ]);
+  response.json({ data: invites, meta: paginationMeta(query.page, query.pageSize, total) });
 });
 
-router.get("/roles", async (_request, response) => {
-  const roles = await prisma.platformRole.findMany({
-    select: { id: true, code: true, nameBn: true, nameEn: true, description: true, isSuperAdmin: true, isSystem: true, isActive: true },
-    orderBy: { code: "asc" },
-  });
-  response.json({ roles });
+router.get("/roles", async (request, response) => {
+  const query = parseListQuery(request.query, ["code", "nameBn", "nameEn", "createdAt"], "code", "asc");
+  const where: Prisma.PlatformRoleWhereInput = {
+    isActive: true,
+    ...(query.search ? { OR: [{ code: { contains: query.search, mode: "insensitive" } }, { nameBn: { contains: query.search } }, { nameEn: { contains: query.search, mode: "insensitive" } }] } : {}),
+  };
+  const orderBy = [{ [query.sort]: query.order }, { id: "asc" }] as Prisma.PlatformRoleOrderByWithRelationInput[];
+  const [roles, total] = await prisma.$transaction([
+    prisma.platformRole.findMany({
+      where,
+      select: { id: true, code: true, nameBn: true, nameEn: true, description: true, isSuperAdmin: true, isSystem: true, isActive: true },
+      orderBy,
+      skip: query.skip,
+      take: query.take,
+    }),
+    prisma.platformRole.count({ where }),
+  ]);
+  response.json({ data: roles, meta: paginationMeta(query.page, query.pageSize, total) });
 });
 
-router.get("/users", async (_request, response) => {
-  const users = await prisma.platformUser.findMany({
-    select: { id: true, email: true, name: true, isActive: true, lastLoginAt: true, role: { select: { id: true, code: true, nameBn: true, nameEn: true, isSuperAdmin: true } } },
-    orderBy: { email: "asc" },
-  });
-  response.json({ users });
+router.get("/users", async (request, response) => {
+  const query = parseListQuery(request.query, ["email", "name", "createdAt", "lastLoginAt"], "email", "asc");
+  const where: Prisma.PlatformUserWhereInput = query.search
+    ? { OR: [{ email: { contains: query.search, mode: "insensitive" } }, { name: { contains: query.search, mode: "insensitive" } }] }
+    : {};
+  const orderBy = [{ [query.sort]: query.order }, { id: "asc" }] as Prisma.PlatformUserOrderByWithRelationInput[];
+  const [users, total] = await prisma.$transaction([
+    prisma.platformUser.findMany({
+      where,
+      select: { id: true, email: true, name: true, isActive: true, lastLoginAt: true, role: { select: { id: true, code: true, nameBn: true, nameEn: true, isSuperAdmin: true } } },
+      orderBy,
+      skip: query.skip,
+      take: query.take,
+    }),
+    prisma.platformUser.count({ where }),
+  ]);
+  response.json({ data: users, meta: paginationMeta(query.page, query.pageSize, total) });
 });
 
 router.post("/invites", async (request, response) => {

@@ -187,13 +187,16 @@ HTTP → Fastify
 ### 2.4 API নিয়ম
 
 - Base: `/api/v1`। REST + JSON। RFC 9457 `application/problem+json` এরর।
-- Success envelope: `{ "data": ..., "meta": { "nextCursor": "..." } }`।
-- Error shape: `{ "type": "ERR_INVOICE_ALREADY_VOID", "title": "...", "status": 409, "detail": "...", "errors": {field: [...]}, "requestId": "..." }`।
-- Pagination: cursor-ভিত্তিক (`?limit=20&cursor=...`)।
+- Success envelope: single resource `{ "data": ... }`; collection `{ "data": [...], "meta": { "page": 1, "pageSize": 20, "total": 0, "totalPages": 0, "hasPreviousPage": false, "hasNextPage": false } }`।
+- Error shape: RFC 9457 `type`, `title`, `status`, `detail`, `instance`, stable `code`, `requestId`; validation error-এ field path/code/message-এর তালিকা। Internal stack, SQL, secret বা credential response-এ যাবে না।
+- **সবার জন্য collection GET contract:** প্রতিটি list endpoint-এ `page` (default 1), `pageSize` (default 20, max 100), `search` (optional, max 120 chars), `sort` (endpoint-specific allowlist), `order=asc|desc` (default endpoint অনুযায়ী) সমর্থন বাধ্যতামূলক। Unknown sort field, invalid page/order → 422 ProblemDetails। প্রতিটি endpoint কোন field-এ কীভাবে search/sort হবে তা নথিবদ্ধ করবে; search parameterized/case-insensitive হবে। Stable ordering-এর শেষে `id` tie-breaker যোগ হবে। Prisma-তে shared `parseListQuery`/`paginationMeta` helper ব্যবহার করতে হবে। বড় dataset-এর endpoint চাইলে এই contract-এর পাশাপাশি cursor pagination দিতে পারে।
+- List query উদাহরণ: `GET /api/v1/properties?search=mirpur&sort=name&order=asc&page=2&pageSize=20`।
 - **Idempotency:** `POST /payments`, `POST /invoices/generate`, `POST /payments/:id/void` এ `Idempotency-Key` হেডার বাধ্যতামূলক; `idempotency_keys` টেবিলে (tenant, key, request hash, response) 24h রাখা।
 - সময় ISO 8601 UTC; টাকা JSON এ **string decimal** (`"12500.00"`), কখনো float নয়।
 - ID: UUID v7।
 - Versioning: ব্রেকিং বদলে `/v2`।
+
+**Tenant auth/profile API (MVP):** `POST /api/v1/auth/login` (`identifier`, `password`), `GET /api/v1/auth/profile`, `PATCH /api/v1/auth/profile` (name/locale/theme), `POST /api/v1/auth/logout`। Tenant host registered active `tenant_domains` থেকে resolve হবে; host/session mismatch-এ session revoke করে 401। Development-এ শুধু `NODE_ENV=development` হলে `X-Tenant-Slug` header দিয়ে workspace নির্বাচন করা যায়। Tenant-scoped query `withTenantTransaction()` দিয়ে transaction-local `app.tenant_id` সেট করবে। Profile/login response `Cache-Control: no-store`; password/session hash কখনো profile-এ ফেরত যাবে না। Profile/logout state change-এ configured CORS origin + `X-Requested-With: XMLHttpRequest` check বাধ্যতামূলক।
 
 ### 2.5 টাকার নিয়ম (কঠোর)
 

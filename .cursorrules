@@ -65,9 +65,13 @@ TypeScript strict, pnpm + Turborepo, Next.js App Router + React + Tailwind + sha
 Do NOT add any dependency/technology not in TRD. Propose it, wait for approval, then record in TRD + ADR. Pin exact versions; verify with `npm view`.
 
 ## CODE & UI CONVENTIONS
+- Frontend work must follow `BashaDesk-Frontend-README.md`. Long create/edit forms use React Hook Form + Dexie/IndexedDB draft persistence for approved non-sensitive data; follow its tenant/user scoping, logout, expiry, restore, and no-offline-submit rules.
 - Folder layout and naming exactly per TRD section 3; apps/* import only packages/*.
 - Thin controllers, logic in services, SQL in repositories; modules talk via public services only.
+- Every backend module uses `*.routes.ts` for route wiring, `*.controller.ts` for HTTP request/response mapping, `*.service.ts` for business and database work, `*.validation.ts` for Zod/input validation, and `*.middleware.ts` for module guards when needed.
 - Errors: DomainError(code) -> RFC 9457 problem+json. No bare `throw new Error`. No `any`.
+- Every collection `GET` uses the shared list contract: `page`, `pageSize` (max 100), `search`, allowlisted `sort`, `order`; return `{data, meta}` with totals and page flags. Reject invalid query values with 422 ProblemDetails and add a stable `id` tie-breaker. See TRD §2.4 and `backend/src/common/list-query.ts`.
+- Every API validates input, returns safe ProblemDetails errors with request ID, and never returns stack/SQL/secrets. Tenant routes resolve host + session and run scoped DB work through `withTenantTransaction`.
 - UI: design tokens only (no raw hex/px). All strings via next-intl keys (messages/bn.json, en.json). Format with Intl (bn-BD), Asia/Dhaka. Implement loading/empty/error states for every screen. Mobile-first (360px). Status = color + icon/label.
 
 ## TESTING

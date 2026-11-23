@@ -80,9 +80,12 @@ TypeScript strict · pnpm + Turborepo · Next.js (App Router) + React + Tailwind
 
 ## 7. Code & UI conventions
 
+- Frontend work must follow `BashaDesk-Frontend-README.md`. Long create/edit forms use React Hook Form + Dexie/IndexedDB draft persistence for approved non-sensitive data; follow its tenant/user scoping, logout, expiry, restore, and no-offline-submit rules.
 - Folder structure and naming exactly as TRD §3. `apps/*` import only from `packages/*`.
 - Controllers thin, business logic in services, SQL only in repositories. Modules call each other through public services only.
 - Domain errors via `DomainError(code)` → RFC 9457 problem+json. No bare `throw new Error`.
+- Every collection `GET` uses the shared list contract: `page`, `pageSize` (max 100), `search`, allowlisted `sort`, `order`; return `{data, meta}` with totals and page flags. Reject invalid values with 422 ProblemDetails and add a stable `id` tie-breaker. See TRD §2.4 and `backend/src/common/list-query.ts`.
+- Every API validates input, returns safe ProblemDetails errors with request ID, and never returns stack/SQL/secrets. Tenant routes resolve host + session and run scoped DB work through `withTenantTransaction`.
 - No `any`. Prefer types derived from Zod schemas in `packages/shared`.
 - UI: use design tokens from `03_UI_Spec.md` only (no raw hex/px). All strings via `next-intl` keys in `messages/{bn,en}.json`. Format money/dates with `Intl` (`bn-BD`), Asia/Dhaka. Every list/screen implements loading, empty, error states per AppFlow §1.3. Mobile-first at 360px.
 - Status UI = color **and** icon/label.
