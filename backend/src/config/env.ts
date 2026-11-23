@@ -8,6 +8,8 @@ const EnvSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65_535).default(4000),
   DATABASE_URL: z.string().url(),
   CORS_ORIGIN: z.string().default("http://localhost:3000"),
+  PLATFORM_INVITE_ORIGIN: z.string().url().default("http://localhost:4000"),
+  PLATFORM_MFA_ENCRYPTION_KEY: z.string().regex(/^[\da-fA-F]{64}$/).optional(),
   TRUST_PROXY_HOPS: z.coerce.number().int().min(0).default(0),
   LOG_LEVEL: z
     .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])

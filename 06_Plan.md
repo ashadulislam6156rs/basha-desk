@@ -51,12 +51,12 @@
 - [ ] P1-21 — Staff login/logout/me API + brute-force lock (৫ ব্যর্থ → ১৫মি) + rate limit · Done when: লক ও আনলক টেস্ট পাস
 - [ ] P1-22 — Renter OTP: request-otp / verify-otp (Redis TTL, attempts, cooldown, enumeration-safe বার্তা) · Done when: সব সীমা টেস্টে প্রমাণিত
 - [ ] P1-23 — CSRF/Origin গার্ড, cookie `__Host-sid` কনফিগ, CORS allow-list · Done when: ভুল Origin এ POST প্রত্যাখ্যাত
-- [ ] P1-24 — RBAC: `PermissionGuard`, `@RequirePermission`, role→permission seed (per tenant), property scope helper ও repository স্তরে scope ফিল্টার · Done when: Manager অনুমতিহীন property তে 403/০ সারি
-- [ ] P1-25 — Platform auth: `platform_users`, TOTP MFA enroll/verify, আলাদা session কুকি/গার্ড · Done when: MFA ছাড়া platform API অ্যাক্সেস নেই
+- [ ] P1-24 — Tenant RBAC: `PermissionGuard`, `@RequirePermission`, system role seed, Owner-এর tenant-local role create/clone ও module/action permission CRUD, grant-authority check; property scope helper ও repository স্তরে scope filter · Done when: Manager অনুমতিহীন action/property-তে 403/০ সারি; custom role cross-tenant ব্যবহার অসম্ভব
+- [ ] P1-25 — Platform auth + Platform RBAC: `platform_users`, TOTP MFA, আলাদা session cookie/guard; Super Admin-এর platform role create/permission select; existing user role change এবং platform invite/accept · Done when: MFA ছাড়া platform API বন্ধ; tenant permission দিয়ে platform access বা উল্টোটা অসম্ভব; শেষ Super Admin সুরক্ষিত
 - [ ] P1-26 — Audit সার্ভিস (`AuditService.record`) + `@Audited` ইন্টারসেপ্টর + PII মাস্কিং লগার · Done when: লগইন ও permission পরিবর্তন audit এ আসে; লগে ফোন মাস্কড
 - [ ] P1-27 — Entitlement সার্ভিস (`assert`, usage counter transactional) · Done when: লিমিট ছাড়ালে `ERR_PLAN_LIMIT` 403/409
 - [ ] P1-28 — **Provisioning**: signup API (slug check, reserved, Turnstile, OTP), `provision-tenant` BullMQ job (idempotent ধাপভিত্তিক), invite · Done when: ব্যর্থ job পুনরায় চালালে আধা-তৈরি workspace নেই (টেস্ট)
-- [ ] P1-29 — Invite flow (create/accept/revoke/expire) + ইউজার ম্যানেজমেন্ট API (role, scope, deactivate → সেশন বাতিল) · Done when: শেষ Owner নামানো ব্লক
+- [ ] P1-29 — Invite flow (create/accept/revoke/expire) + tenant user management API: existing member role change; নতুন user invite/accept; role, property scope, deactivate → session revoke · Done when: existing/new user দু’ভাবেই role assignment কাজ করে; privilege escalation ও cross-tenant assignment ব্লক; শেষ Owner নামানো ব্লক
 - [ ] P1-30 — Phase 1 গেট: cross-tenant টেস্ট স্যুট CI তে বাধ্যতামূলক জব হিসেবে যুক্ত · Done when: CI তে `test:tenant-isolation` required check
 
 **Phase 1 Exit Criteria:** সব migration চলে; RLS স্যুট সবুজ; auth/MFA/OTP কাজ করে; provisioning idempotent; CI সবুজ।
@@ -132,12 +132,12 @@
 - [ ] P3-15 — Arrears, Deposits, Expenses স্ক্রিন · Done when: §4.9
 - [ ] P3-16 — Reports স্ক্রিন + export · Done when: Excel/PDF ডাউনলোড
 - [ ] P3-17 — Maintenance বোর্ড, Notices · Done when: §4.10–4.11
-- [ ] P3-18 — Settings: profile, workspace (লোগো স্যানিটাইজ), users/roles/scope, billing-config, subscription · Done when: §4.13
+- [ ] P3-18 — Settings: profile, workspace (লোগো স্যানিটাইজ), users/invites, tenant role builder (module/action permission matrix)/scope, billing-config, subscription · Done when: §4.13; Owner role create/assign flow সম্পন্ন
 - [ ] P3-19 — Audit log স্ক্রিন · Done when: ফিল্টার কাজ করে
 
 ### 3D. Renter Portal ও Platform Admin
 - [ ] P3-20 — Renter Portal (লগইন OTP, হোম, invoices, payments+ডাউনলোড, notices, requests, profile) · Done when: §5 সব রুট
-- [ ] P3-21 — Platform Admin (login+MFA, dashboard, tenants, tenant ডিটেইল, plans, subscriptions, support, audit, ops) · Done when: §3 সব রুট
+- [ ] P3-21 — Platform Admin (login+MFA, dashboard, tenants, tenant ডিটেইল, plans, subscriptions, support, platform users/role builder, audit, ops) · Done when: §3 সব রুট; platform RBAC UI tenant RBAC থেকে বিচ্ছিন্ন
 - [ ] P3-22 — PWA (manifest, offline read cache, install prompt) · Done when: Lighthouse PWA চেক পাস
 - [ ] P3-23 — a11y ও i18n অডিট (সব স্ট্রিং কী থেকে, `03_UI_Spec §7`) · Done when: axe কোনো সিরিয়াস ইস্যু নেই; hardcoded স্ট্রিং লিন্ট ০
 

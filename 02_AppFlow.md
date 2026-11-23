@@ -131,6 +131,8 @@ PROVISIONING (পোলিং প্রতি ২ সেকেন্ডে)
 | `/plans` | প্যাকেজ ও entitlement এডিট | [সংরক্ষণ] |
 | `/subscriptions` | সাবস্ক্রিপশন ও platform invoice | [Invoice দেখুন], [Paid চিহ্নিত] |
 | `/support` | সাপোর্ট টিকেট ও time-boxed access তালিকা | [অ্যাক্সেস মঞ্জুর/বাতিল] |
+| `/team/users` | Platform user তালিকা, invitation ও role assignment | [ইউজার invite], [role assign/change], [নিষ্ক্রিয়] |
+| `/team/roles` | Platform role তালিকা ও module/action permission matrix | [role তৈরি], [permission সংরক্ষণ] |
 | `/audit` | platform audit log | ফিল্টার |
 | `/ops` | provisioning job, failed job রিট্রাই | [Retry] |
 
@@ -153,6 +155,10 @@ REQUESTED ─(Super Admin অনুমোদন + সময়সীমা)─�
 ```
 
 ACTIVE থাকাকালীন Support Agent শুধু অনুমোদিত scope দেখে; ফাইন্যান্সিয়াল ডাটা ডিফল্টে লুকানো; প্রতিটি পদক্ষেপ audit।
+
+### 3.3 Platform team access management
+
+Platform Super Admin platform permission catalog থেকে custom platform role তৈরি/সম্পাদনা করে এবং platform user-কে একটি role assign করে। বিদ্যমান platform user-এর role বদলানো যায়; নতুন platform user-কে নির্ধারিত role-সহ invite করা হয়, invitation গ্রহণে account সক্রিয় হয় এবং MFA enrollment বাধ্যতামূলক। Platform role শুধু `admin.bashadesk.com`-এর platform API-তে কার্যকর; এটি tenant workspace role-এ ব্যবহারযোগ্য নয়। Super Admin role-এর সব-permission ক্ষমতা সংরক্ষিত; শেষ সক্রিয় Super Admin demote/deactivate/delete করা যাবে না। সব পরিবর্তন `platform_audit_logs`-এ লেখা হবে।
 
 **Empty state:** tenant তালিকা খালি → "এখনো কোনো ক্লায়েন্ট নেই" · **Error:** suspend ব্যর্থ হলে কারণসহ টোস্ট।
 
@@ -191,10 +197,18 @@ ACTIVE থাকাকালীন Support Agent শুধু অনুমোদ
 | `/settings/profile` | প্রোফাইল, ভাষা, থিম | সবাই |
 | `/settings/workspace` | নাম, লোগো, ব্র্যান্ডিং | Owner |
 | `/settings/users` | ইউজার, role, property scope | Owner |
+| `/settings/roles` | Tenant-local role তৈরি/ক্লোন, module/action permission ও property scope policy | Owner |
 | `/settings/billing-config` | charge type, late-fee, receipt নম্বর ফরম্যাট | Owner, Accountant |
 | `/settings/subscription` | প্যাকেজ ও ব্যবহার | Owner |
 | `/settings/domains` | custom domain **[V2]** | Owner |
 | `/audit` | audit log | Owner |
+
+### 4.1.1 Tenant role ও user management flow
+
+1. Owner system role-গুলোর permission দেখে; system role সরাসরি বদলাতে পারে না।
+2. Owner custom role তৈরি করে, চাইলে system role clone করে, এবং tenant permission catalog থেকে module/action (যেমন `invoice.view`, `payment.create`, `user.archive`) বেছে নেয়।
+3. Owner existing tenant member-কে role বদলে দিতে পারে; নতুন ব্যক্তি হলে email/phone-এ invite পাঠিয়ে role ও property scope আগে নির্ধারণ করে। Invite গ্রহণে নতুন tenant user তৈরি হয়; একই tenant-এর verified existing user হলে সেই user-কে membership-এ যুক্ত করা যায়।
+4. Role ও membership শুধু ওই tenant-এ প্রযোজ্য। অন্য tenant-এর user/role দেখা বা assign করা যাবে না। Owner নিজের চেয়ে বেশি ক্ষমতাসম্পন্ন role কাউকে দিতে পারবে না; শেষ Owner-কে demote/deactivate করা যাবে না। সব পরিবর্তন tenant audit log-এ থাকবে।
 
 ### 4.2 Onboarding (প্রথমবার, Owner)
 
@@ -320,10 +334,11 @@ Template ফাইল ডাউনলোড (বাংলা কলাম হে
 
 ### 4.13 Settings ও ইউজার ম্যানেজমেন্ট
 
-- ইউজার ইনভাইট: ফোন/ইমেইল + role + property scope → SMS/email লিংক (৭২ ঘণ্টা মেয়াদ)।
+- Owner permission catalog থেকে tenant-local custom role তৈরি/clone করে module/action permission বেছে নেয়; system role সরাসরি edit করা যায় না।
+- Existing tenant member-কে role change/assign করা যায়; নতুন user invite: ফোন/ইমেইল + role + property scope → SMS/email লিংক (৭২ ঘণ্টা মেয়াদ)।
 - ইনভাইট state: `PENDING → ACCEPTED / EXPIRED / REVOKED`।
 - ইউজার নিষ্ক্রিয় করলে সব সেশন বাতিল।
-- Owner নিজেকে একমাত্র Owner হিসেবে নামাতে বা নিষ্ক্রিয় করতে পারবে না।
+- সর্বশেষ সক্রিয় Owner-কে demote বা নিষ্ক্রিয় করা যায় না।
 
 ---
 

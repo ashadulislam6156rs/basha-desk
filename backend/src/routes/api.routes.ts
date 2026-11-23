@@ -1,10 +1,12 @@
 import { Router } from "express";
 import { prisma } from "../db/prisma.js";
 import { apiRateLimit } from "../middleware/rate-limit.js";
+import { platformRouter } from "../modules/platform/platform.routes.js";
 
 export const apiRouter = Router();
 
 apiRouter.use(apiRateLimit);
+apiRouter.use("/platform", platformRouter);
 
 apiRouter.get("/", (_request, response) => {
   response.json({ name: "Basha Desk API", version: "v1" });

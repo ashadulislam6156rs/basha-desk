@@ -499,6 +499,7 @@ model PlatformRole {
 
   platformUsersByRole PlatformUser[] @relation("PlatformUser_role")
   platformRolePermissionsByRole PlatformRolePermission[] @relation("PlatformRolePermission_role")
+  platformInvitesByRole PlatformInvite[] @relation("PlatformInvite_role")
 
   @@map("platform_roles")
 }
@@ -545,12 +546,33 @@ model PlatformUser {
   platformPaymentsByRecordedBy PlatformPayment[] @relation("PlatformPayment_recordedBy")
   platformSessionsByPlatformUser PlatformSession[] @relation("PlatformSession_platformUser")
   platformMfa PlatformMfa? @relation("PlatformMfa_platformUser")
+  platformInvitesSent PlatformInvite[] @relation("PlatformInvite_invitedBy")
   supportAccessGrantsByAgent SupportAccessGrant[] @relation("SupportAccessGrant_agent")
   supportAccessGrantsByGrantedBy SupportAccessGrant[] @relation("SupportAccessGrant_grantedBy")
   platformAuditLogsByPlatformUser PlatformAuditLog[] @relation("PlatformAuditLog_platformUser")
 
   @@index([roleId])
   @@map("platform_users")
+}
+
+model PlatformInvite {
+  id String @id @default(uuid(7)) @db.Uuid
+  email String @db.Citext
+  roleId String @db.Uuid @map("role_id")
+  invitedByPlatformUserId String @db.Uuid @map("invited_by_platform_user_id")
+  tokenHash String @unique @map("token_hash")
+  status InviteStatus @default(PENDING)
+  expiresAt DateTime @db.Timestamptz(6) @map("expires_at")
+  acceptedAt DateTime? @db.Timestamptz(6) @map("accepted_at")
+  revokedAt DateTime? @db.Timestamptz(6) @map("revoked_at")
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  role PlatformRole @relation("PlatformInvite_role", fields: [roleId], references: [id], onDelete: Restrict)
+  invitedBy PlatformUser @relation("PlatformInvite_invitedBy", fields: [invitedByPlatformUserId], references: [id], onDelete: Restrict)
+
+  @@index([email, status, expiresAt])
+  @@index([invitedByPlatformUserId, createdAt])
+  @@map("platform_invites")
 }
 
 model Subscription {
