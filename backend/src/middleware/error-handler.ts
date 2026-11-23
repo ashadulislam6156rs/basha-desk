@@ -32,7 +32,7 @@ export const errorHandler: ErrorRequestHandler = (error: unknown, request, respo
   if (response.headersSent) return;
 
   if (error instanceof AppError) {
-    request.log.warn({ code: error.code, requestId: request.id }, error.message);
+    request.log?.warn({ code: error.code, requestId: request.id }, error.message);
     problem(request, response, error.status, error.code, error.message, error.detail);
     return;
   }
@@ -61,10 +61,15 @@ export const errorHandler: ErrorRequestHandler = (error: unknown, request, respo
   }
 
   const safeError = error instanceof Error ? error : new Error("Unknown request error");
-  request.log.error({
+  const logContext = {
     errorName: safeError.name,
     ...(env.NODE_ENV === "development" ? { stack: safeError.stack } : {}),
     requestId: request.id,
-  }, "Unhandled request error");
+  };
+  if (request.log) {
+    request.log.error(logContext, "Unhandled request error");
+  } else {
+    console.error("Unhandled request error", logContext);
+  }
   problem(request, response, 500, "ERR_INTERNAL", "Internal Server Error", "An unexpected error occurred.");
 };

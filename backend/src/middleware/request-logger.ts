@@ -18,8 +18,8 @@ export const requestLogger = pinoHttp({
     req: (request) => ({
       id: request.id,
       method: request.method,
-      url: request.url.split("?")[0],
-      remoteAddress: request.socket.remoteAddress,
+      url: request.url?.split("?")[0],
+      remoteAddress: request.socket?.remoteAddress,
     }),
   },
   autoLogging: {
