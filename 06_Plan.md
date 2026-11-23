@@ -20,6 +20,7 @@
 - [ ] P0-08 — ADR ০০০১: hosting runtime বাছাই (Fly/Railway/ECS) ও ADR ০০০২: SMS provider ও ADR ০০০৩: PDF লাইব্রেরি · Done when: `docs/adr/` এ তিনটি ফাইল ও `04_TRD.md` আপডেট
 - [ ] P0-09 — `packages/shared`: money utils (decimal), error codes, ID utils (UUIDv7), Result/DomainError · Done when: unit টেস্ট (rounding half-up সহ) পাস
 - [ ] P0-10 — `packages/testing`: Testcontainers Postgres helper, tenant factory (`createTenant()`, `createUser()`), DB reset · Done when: নমুনা integration টেস্ট চলে
+- [x] P0-11 — API contract foundation: safe ProblemDetails errors ও shared collection `page/pageSize/search/sort/order` helper · Done when: helper আছে, বর্তমান platform roles/users/invites list-এ contract কাজ করে, TRD ও agent rules-এ এটি বাধ্যতামূলক
 
 ---
 
@@ -217,7 +218,7 @@
 
 | তারিখ | টাস্ক ID | কী করা হলো | সিদ্ধান্ত / বিচ্যুতি / ব্লকার |
 |---|---|---|---|
-| — | — | (এখনো কিছু শুরু হয়নি) | — |
+| 2026-11-24 | P0-11 | Shared API list-query helper ও ProblemDetails conventions; platform list endpoint-এ search/sort/pagination | Page-based default; বড় তালিকায় cursor pagination অতিরিক্তভাবে করা যাবে |
 
 ## ব্লকার ও খোলা প্রশ্ন (মানুষের উত্তর দরকার)
 

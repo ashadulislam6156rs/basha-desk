@@ -67,6 +67,7 @@ These are implementation recommendations, not all explicitly locked in the sourc
 | `cmdk` | Command palette / quick navigation |
 | `react-day-picker` | Calendar/date-picker foundation if required by the selected shadcn component |
 | `react-number-format` | Formatted numeric input where useful |
+| `dexie` | IndexedDB wrapper for client-side draft persistence |
 | `@tanstack/react-virtual` | Virtualize very large tables/lists |
 | `date-fns-tz` | Keep timezone conversion explicit (also listed in the locked stack) |
 | `@sentry/nextjs` | Production error monitoring, if Sentry is selected |
@@ -128,6 +129,9 @@ npm install --workspace=web cmdk
 
 # Numeric inputs
 npm install --workspace=web react-number-format
+
+# Auto-save non-sensitive form drafts in IndexedDB
+npm install --workspace=web dexie
 
 # PWA — add only when offline/read-cache requirements are implemented
 npm install --workspace=web @serwist/next
@@ -216,6 +220,7 @@ bashadesk/
 │   │   │   ├── lib/
 │   │   │   │   ├── api-client/
 │   │   │   │   ├── auth/
+│   │   │   │   ├── drafts/          # IndexedDB draft DB, schema versions, cleanup
 │   │   │   │   ├── format/
 │   │   │   │   ├── i18n/
 │   │   │   │   └── query/
@@ -278,6 +283,7 @@ bashadesk/
 | `components/` | Shared web-only layout and composition components |
 | `lib/api-client/` | API client, request handling, response normalization |
 | `lib/query/` | Query client and query key conventions |
+| `lib/drafts/` | Dexie database, tenant/user-scoped draft repository, migrations and expiry cleanup |
 | `messages/` | Bengali and English translation dictionaries |
 | `packages/ui` | Reusable visual components and design tokens |
 | `packages/shared` | Shared Zod schemas, types, enums, error codes, money helpers |
@@ -356,6 +362,13 @@ Never place private tenant data in a shared public cache. Configure server cachi
 - Use React Hook Form for complex forms.
 - Use Zod schemas from `packages/shared` where the schema is genuinely shared.
 - Client validation improves user experience; server validation remains mandatory.
+- Implement **Auto-Save Draft / Form Persistence** for create/edit forms that can take time to complete. Use React Hook Form for live form values and validation, Dexie over IndexedDB for same-browser persistence, and TanStack Query only when synchronizing drafts with the server. Do not put form records in Zustand.
+- Debounce local saves (about 500–1000 ms); flush on `pagehide`/visibility change as a best effort. Show `Saving…`, `Draft saved`, `Offline`, and save-error states. Show `Draft saved` only after the IndexedDB transaction commits. A browser/process crash can still lose edits made during the debounce window.
+- Namespace every draft by the authenticated `tenantId`, `userId`, `formType`, and draft/record ID. Get tenant and user identity from the validated session context, never from editable form fields. Restore only drafts matching the currently authenticated user and tenant. Keep IndexedDB rows on logout so the same person can resume after logging in again, but clear in-memory/query caches and never expose another account's drafts after logout, login, or tenant switch.
+- Store a `schemaVersion`, `createdAt`, and `updatedAt` with each draft. Validate restored content with the current Zod schema; migrate known old versions or offer recovery/discard for incompatible drafts. Expire abandoned drafts after 30 days by default. Delete a draft after successful submit or explicit discard.
+- Persist only fields approved for browser storage. Never persist passwords, OTPs, session/access tokens, NID/passport data, payment credentials, card data, or sensitive financial/payment form values in IndexedDB. For sensitive drafts or drafts that must follow a user across devices, use an authenticated, tenant-scoped server draft API; the server remains authoritative and enforces permissions and expiry.
+- Local draft persistence is not an offline submission queue. Do not submit create/update/payment actions automatically when connectivity returns. Financial mutations still require explicit user confirmation and the backend's validation/idempotency rules.
+- If the same draft is open in multiple tabs, detect a newer `updatedAt`/version and ask before overwriting; do not silently replace newer draft content.
 - Keep money values precise. Do not use JavaScript floating-point arithmetic for financial calculations.
 - Keep API money representation consistent with the backend contract (the TRD specifies decimal handling and JSON strings for money).
 - Show field-level Bengali/English validation messages.
@@ -447,6 +460,9 @@ Important frontend scenarios:
 
 - A user cannot see another tenant's data after switching workspace.
 - Logout clears private client-side cache.
+- A non-sensitive form draft restores after reload/browser restart for the same authenticated user and tenant; another user or tenant never sees it.
+- A draft is not reported as saved before IndexedDB commits; failed writes show a recoverable error.
+- Expired/submitted/discarded drafts are removed, and older schema versions are migrated or safely rejected.
 - Unauthorized actions are not exposed as usable controls (backend authorization is still authoritative).
 - Payment forms prevent accidental double-click submissions.
 - Bengali and English layouts both work at mobile widths.

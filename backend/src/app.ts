@@ -27,6 +27,7 @@ app.use(
       "X-Request-Id",
       "Idempotency-Key",
       "X-Requested-With",
+      "X-Tenant-Slug",
     ],
     exposedHeaders: [
       "X-Request-Id",
