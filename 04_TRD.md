@@ -229,10 +229,14 @@ HTTP → Fastify
 **Brute-force:** অ্যাকাউন্ট + IP উভয় ভিত্তিতে রেট লিমিট; ৫ ব্যর্থ → ১৫ মিনিট লক।
 **OTP:** ৬ সংখ্যা, TTL ৫ মিনিট, Redis এ হ্যাশ, ৫ চেষ্টা, রিসেন্ড cooldown ৬০s।
 **CSRF:** SameSite=Lax + কাস্টম হেডার (`X-Requested-With`) + Origin চেক; state-changing শুধু POST/PUT/PATCH/DELETE।
-**RBAC:** `permissions` (যেমন `invoice.create`, `payment.record`, `payment.void`), `roles`, `role_permissions`; `memberships` (user, tenant, role) + `membership_property_scopes`। System role (Owner, Manager, Accountant, Caretaker, Renter) seed হবে; কাস্টম role [V2]।
+**RBAC — দুইটি আলাদা scope, MVP:**
+- **Platform scope:** `platform_permissions`, `platform_roles`, `platform_role_permissions`; Platform Super Admin module/action permission বেছে platform team-এর custom role বানায় এবং platform user-কে assign করে। Platform session/guard ও audit আলাদা; Super Admin MFA বাধ্যতামূলক।
+- **Tenant scope:** tenant permission catalog, tenant/system `roles`, `role_permissions`, `memberships`, `membership_property_scopes`। Tenant Owner শুধু নিজের tenant-এ custom role তৈরি/clone করে `view/create/edit/delete/archive/...` permission বেছে নেয়; existing member-কে assign বা invite করে role ও property scope দেয়।
+- System role (Owner, Manager, Accountant, Caretaker, Renter) seed হবে; system role সরাসরি edit নয়—tenant Owner clone করে tenant-local custom role বানায়। Role creation/assignment-এ caller-এর grant authority যাচাই হবে; privilege escalation ও cross-scope grants ব্লক হবে। শেষ active Super Admin/Owner সরানো ব্লক; সব role, permission ও assignment পরিবর্তন audit হবে।
 **Property scope:** Manager/Caretaker এর কোয়েরিতে `property_id IN (scoped)` ফিল্টার repository স্তরে বাধ্যতামূলক (শুধু controller এ নয়)।
-**Platform:** আলাদা `platform_users` টেবিল, আলাদা session কুকি/হোস্ট, MFA বাধ্যতামূলক।
 **Support access:** `support_access_grants` (scope, expires_at, granted_by); middleware প্রতি request এ যাচাই; ডিফল্টে ফাইন্যান্সিয়াল টেবিল ব্লক।
+
+**Platform invite API (MVP):** MFA-enabled Platform Super Admin `GET /api/v1/platform/roles` দিয়ে role বেছে `POST /api/v1/platform/invites`-এ email ও role পাঠিয়ে invite তৈরি করবে। API ৭২ ঘণ্টার one-time `acceptUrl` দেবে; email provider যুক্ত না হওয়া পর্যন্ত delivery manual। Invitee link token নিয়ে `POST /api/v1/platform/invites/validate` ও `POST /api/v1/platform/invites/accept`-এ যাচাই/গ্রহণ করবে, নাম ও ১২+ অক্ষরের password সেট করবে, তারপর MFA setup/confirm বাধ্যতামূলক। বিদ্যমান platform user-কে `GET /api/v1/platform/users` থেকে খুঁজে `PATCH /api/v1/platform/users/:id/role` দিয়ে role বদলানো যায়। Token শুধু hash হয়ে DB-তে থাকে; URL fragment token access log-এ পাঠানো হয় না।
 
 ### 2.9 Plan entitlement enforcement
 

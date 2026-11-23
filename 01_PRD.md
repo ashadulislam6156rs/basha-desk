@@ -107,9 +107,15 @@ Renter (ভাড়াটিয়া / occupant)
 |---|---|---|
 | FR-010 | Staff লগইন: email/মোবাইল + পাসওয়ার্ড; Platform Admin এ MFA আবশ্যক | MVP |
 | FR-011 | Renter লগইন: মোবাইল নম্বর + OTP | MVP |
-| FR-012 | Role-based permission + property-scoped assignment | MVP |
+| FR-012 | আলাদা Platform RBAC ও Tenant RBAC: উভয় স্তরে module/action ভিত্তিক role permission এবং server-side enforcement | MVP |
 | FR-013 | সব সেনসিটিভ অ্যাকশন audit log এ যাবে (কে, কখন, কী, আগে/পরে) | MVP |
-| FR-014 | ইউজার ইনভাইট, নিষ্ক্রিয়, role পরিবর্তন | MVP |
+| FR-014 | Tenant Owner বিদ্যমান user-কে role দিতে/বদলাতে এবং নতুন user invite করে role ও property scope দিতে পারবে | MVP |
+| FR-015 | Platform Super Admin platform-team-এর জন্য custom role তৈরি, permission বাছাই এবং platform user-কে role assign করতে পারবে | MVP |
+| FR-016 | Tenant Owner tenant-local custom role তৈরি, module/action permission বাছাই, system role clone, user assign ও property scope নির্ধারণ করতে পারবে | MVP |
+| FR-017 | Platform role/permission tenant workspace-এ, tenant role/permission platform account-এ প্রযোজ্য হবে না; cross-scope assignment প্রত্যাখ্যাত হবে | MVP |
+| FR-018 | Platform Super Admin বিদ্যমান platform user-কে role assign/change অথবা নতুন platform user invite করে role দিতে পারবে | MVP |
+
+**RBAC boundary:** Platform Super Admin Basha Desk-এর নিজস্ব platform users ও platform permissions পরিচালনা করে। প্রতিটি tenant-এর Owner শুধু নিজের tenant-এর staff, role ও permission পরিচালনা করে। Permission catalog, role assignment, session ও audit context দুই scope-এ আলাদা। কোনো scope-এই role user-কে assign করা যাবে না যদি assignকারী সেই permission দেওয়ার অধিকার না রাখে। শেষ সক্রিয় Platform Super Admin এবং শেষ সক্রিয় Tenant Owner সরানো/নিষ্ক্রিয় করা যাবে না।
 
 ### 6.3 Property ও Space
 | ID | Requirement | অগ্রাধিকার |
@@ -213,6 +219,8 @@ Renter (ভাড়াটিয়া / occupant)
 | US-012 | রহিম | খরচ রেকর্ড করে নিট লাভ দেখতে চাই | property-wise আয়-ব্যয় রিপোর্ট | FR-060..061 |
 | US-013 | আমরা | ক্লায়েন্ট suspend/reactivate করতে চাই | suspend হলে লগইন ও hostname বন্ধ | FR-006 |
 | US-014 | আমরা | সাবস্ক্রিপশন ও প্যাকেজ লিমিট ম্যানেজ করতে চাই | লিমিট ব্যাকএন্ড enforce | FR-025, FR-090..092 |
+| US-015 | Platform Super Admin | platform team-এর জন্য permission বেছে role তৈরি করে platform user-কে assign করতে চাই | শুধু platform permission কার্যকর; MFA ও audit বজায় থাকে | FR-010, FR-015, FR-017 |
+| US-016 | Tenant Owner | নিজের প্রতিষ্ঠানের জন্য permission বেছে role তৈরি করে existing/new user-কে assign করতে চাই | শুধু tenant permission কার্যকর; property scope, audit ও শেষ Owner protection থাকে | FR-012..017 |
 
 ---
 

@@ -139,9 +139,15 @@ CREATE TYPE ledger_account_type AS ENUM ('ASSET','LIABILITY','INCOME','EXPENSE',
 `platform_payments`: id, tenant_id, platform_invoice_id, amount, method, reference, paid_at, recorded_by_platform_user_id।
 
 ### 1.9 `platform_users`, `platform_sessions`, `platform_mfa`
-- `platform_users`: id, email citext UNIQUE, name, password_hash, role (`SUPER_ADMIN`/`SUPPORT_AGENT`), is_active, last_login_at।
+- `platform_roles`: id, code UNIQUE, name_bn/name_en, description, `is_super_admin`, `is_system`, `is_active`; system Super Admin role সংরক্ষিত, সব platform permission bypass করে।
+- `platform_permissions`: `code` PK (যেমন `tenant.create`, `tenant.archive`, `billing.view`, `support_access.grant`), `module`, `action`, description ও sort_order; global catalog, read-only seed।
+- `platform_role_permissions`: `(role_id, permission_code)` PK; custom platform role-এর অনুমতি। `is_super_admin` role-এর ক্ষেত্রে permission rows লাগে না।
+- `platform_users`: id, email citext UNIQUE, name, password_hash, `role_id`, is_active, last_login_at। প্রতিটি platform user এক সময়ে একটি platform role পায়; এই role tenant membership-এ ব্যবহার করা যায় না।
 - `platform_sessions`: id, platform_user_id, token_hash UNIQUE, ip, user_agent, expires_at, revoked_at, created_at।
 - `platform_mfa`: platform_user_id PK, totp_secret_enc, enabled_at, recovery_codes_hash text[]।
+- `platform_invites`: id, email, invited_by_platform_user_id, role_id, token_hash UNIQUE, status, expires_at, accepted_at, created_at। Invite গ্রহণে platform account তৈরি হবে; verified existing platform account-এ invite গ্রহণ করলে role assignment/update হবে।
+
+Platform Super Admin platform permission catalog থেকে custom role তৈরি ও platform user-কে assign করতে পারে। Platform user/role/permission পরিবর্তন `platform_audit_logs`-এ লিখতে হবে। শেষ সক্রিয় Super Admin demote, deactivate বা delete করা যাবে না।
 
 ### 1.10 `support_access_grants`
 id, tenant_id, platform_user_id (agent), granted_by (platform_user), scope text[] (`metadata`,`properties`,`finance`...), reason, expires_at, revoked_at, created_at। সূচক `(platform_user_id, expires_at)`।
@@ -184,18 +190,18 @@ id, tenant_id, user_id, token_hash text UNIQUE, ip inet, user_agent, created_at,
 id, tenant_id, phone, purpose (`RENTER_LOGIN`,`SIGNUP`,`INVITE`), code_hash, attempts int, expires_at, consumed_at, created_at।
 
 ### 2.4 `roles`, `permissions`, `role_permissions`
-- `permissions`: `code text PK` (যেমন `property.read`, `property.write`, `space.write`, `renter.write`, `agreement.write`, `invoice.read`, `invoice.issue`, `invoice.void`, `payment.record`, `payment.void`, `expense.write`, `report.read`, `user.manage`, `settings.manage`, `maintenance.write`, `notice.send`, `import.run`, `audit.read`), `description`। গ্লোবাল, RLS নেই (read-only seed)।
-- `roles`: id, tenant_id NULL (NULL = system role), code (`OWNER`,`MANAGER`,`ACCOUNTANT`,`CARETAKER`,`RENTER`), name_bn, name_en, is_system boolean। `UNIQUE (tenant_id, code)`।
-- `role_permissions`: role_id, permission_code, PK (role_id, permission_code)।
+- `permissions`: `code text PK` (যেমন `property.view`, `property.create`, `space.archive`, `invoice.view`, `invoice.issue`, `payment.create`, `payment.void`, `user.archive`, `audit.view`), `module`, `action`, `scope_type`, description ও sort_order। Tenant permission-এর global catalog; read-only seed, platform permission catalog থেকে আলাদা।
+- `roles`: id, `tenant_id NULL` (NULL = immutable system role), code, name_bn/name_en, description, `is_system`, `base_role_id`। Tenant-local custom role-এ `tenant_id` বাধ্যতামূলক; system role clone করলে permission কপি হয়, পরের পরিবর্তন স্বাধীন। `UNIQUE (tenant_id, code)`।
+- `role_permissions`: role_id, permission_code, PK (role_id, permission_code)। System role সরাসরি edit নয়; Owner clone করে custom role তৈরি/সম্পাদনা করবে। Custom role-এর permission একই tenant-এর সদস্যদের ক্ষেত্রেই কার্যকর।
 
 ### 2.5 `memberships`
-id, tenant_id, user_id, role_id, is_active, created_at। `UNIQUE (tenant_id, user_id)`।
+id, tenant_id, user_id, role_id, is_active, created_at। `UNIQUE (tenant_id, user_id)`। প্রতিটি tenant membership-এ এক সময়ে একটি role; অন্য tenant-এ একই user-এর আলাদা membership/role থাকতে পারে।
 
 ### 2.6 `membership_property_scopes`
 membership_id, tenant_id, property_id, PK (membership_id, property_id)। কোনো scope না থাকলে (Owner/Accountant) সব property; Manager/Caretaker এ অন্তত একটি বাধ্যতামূলক (অ্যাপ লজিক)।
 
 ### 2.7 `invites`
-id, tenant_id, invited_by, phone NULL, email NULL, role_id, property_ids uuid[], token_hash UNIQUE, status invite_status, expires_at, accepted_at, created_at।
+id, tenant_id, invited_by, phone NULL, email NULL, role_id, property_ids uuid[], token_hash UNIQUE, status invite_status, expires_at, accepted_at, created_at। Invite গ্রহণে নতুন account তৈরি অথবা verified existing account-কে tenant membership-এ যুক্ত করা যায়; উভয় ক্ষেত্রেই invite-এ নির্বাচিত role/scope প্রয়োগ হবে।
 
 ---
 
